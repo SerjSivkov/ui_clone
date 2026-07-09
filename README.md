@@ -41,6 +41,25 @@ flutter run -d <android-device>
 flutter build apk --debug
 ```
 
+## Релиз
+
+Полная инструкция: **[docs/release-build.md](docs/release-build.md)**.
+
+```bash
+chmod +x scripts/flutter_build_release.sh bin/ci/android_collect_artifacts.sh
+
+# (один раз) подпись: cp android/key.properties.example android/key.properties
+# + android/app/keystore.jks
+
+./scripts/flutter_build_release.sh apk
+# или split: ./scripts/flutter_build_release.sh android-split
+# или Play:  ./scripts/flutter_build_release.sh appbundle
+
+export APP_RELEASE_LABEL="v1.0.0"
+bin/ci/android_collect_artifacts.sh
+# → dist/android/UIClone-android-v1.0.0-*.apk
+```
+
 ## Архитектура
 
 ```
