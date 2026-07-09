@@ -57,4 +57,15 @@ class SettingsService {
     final prefs = await _prefsFuture;
     await prefs.setInt(AppConstants.prefsIntervalMs, value);
   }
+
+  Future<double> getSimilarityPercent() async {
+    final prefs = await _prefsFuture;
+    return prefs.getDouble(AppConstants.prefsSimilarityPercent) ??
+        AppConstants.defaultSimilarityPercent;
+  }
+
+  Future<void> setSimilarityPercent(double value) async {
+    final prefs = await _prefsFuture;
+    await prefs.setDouble(AppConstants.prefsSimilarityPercent, value);
+  }
 }

@@ -41,6 +41,7 @@ class ScreenCaptureService : Service() {
         const val EXTRA_TARGET_PACKAGE = "targetPackage"
         const val EXTRA_TARGET_LABEL = "targetLabel"
         const val EXTRA_INTERVAL_MS = "intervalMs"
+        const val EXTRA_SIMILARITY_PERCENT = "similarityPercent"
 
         private const val CHANNEL_ID = "ui_clone_capture"
         private const val NOTIFICATION_ID = 7101
@@ -83,6 +84,7 @@ class ScreenCaptureService : Service() {
 
     private val isCapturing = AtomicBoolean(false)
     private val isSaving = AtomicBoolean(false)
+    private var similarityGate = FrameSimilarityGate()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -126,6 +128,11 @@ class ScreenCaptureService : Service() {
         sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: ""
         targetLabel = intent.getStringExtra(EXTRA_TARGET_LABEL)
         intervalMs = intent.getLongExtra(EXTRA_INTERVAL_MS, 1500L).coerceIn(800L, 5000L)
+        val similarityPercent = intent
+            .getFloatExtra(EXTRA_SIMILARITY_PERCENT, FrameSimilarityGate.DEFAULT_MAX_DIFF_PERCENT)
+            .coerceIn(0.5f, 15f)
+        similarityGate = FrameSimilarityGate(maxDiffPercent = similarityPercent)
+        similarityGate.reset()
 
         collectedPaths.clear()
         resolveDisplayMetrics()
@@ -213,6 +220,18 @@ class ScreenCaptureService : Service() {
             val cropped = Bitmap.createBitmap(bitmap, 0, 0, width, height)
             bitmap.recycle()
 
+            if (!similarityGate.shouldKeep(cropped)) {
+                cropped.recycle()
+                CaptureEventBus.emit(
+                    mapOf(
+                        "type" to "skipped",
+                        "skipped" to similarityGate.skippedCount(),
+                        "count" to collectedPaths.size,
+                    ),
+                )
+                return
+            }
+
             val dir = File(cacheDir, "captures/$sessionId").apply { mkdirs() }
             val file = File(dir, "shot_${System.currentTimeMillis()}.jpg")
             FileOutputStream(file).use { out ->
@@ -229,6 +248,7 @@ class ScreenCaptureService : Service() {
                     "type" to "screenshot",
                     "path" to file.absolutePath,
                     "count" to count,
+                    "skipped" to similarityGate.skippedCount(),
                 ),
             )
         } catch (e: Exception) {
@@ -336,9 +356,11 @@ class ScreenCaptureService : Service() {
         )
 
         val label = targetLabel?.let { " · $it" } ?: ""
+        val skipped = similarityGate.skippedCount()
+        val skippedPart = if (skipped > 0) " · дублей пропущено: $skipped" else ""
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("UI Clone: идёт сбор$label")
-            .setContentText("Скриншотов: $count · нажмите «Стоп»")
+            .setContentText("Скриншотов: $count$skippedPart · «Стоп»")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(openPending)
             .setOngoing(true)

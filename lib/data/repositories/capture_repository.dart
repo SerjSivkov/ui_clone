@@ -41,6 +41,7 @@ class CaptureRepository {
     InstalledApp? target,
   }) async {
     final interval = await settings.getCaptureIntervalMs();
+    final similarity = await settings.getSimilarityPercent();
     final session = CaptureSession(
       id: _uuid.v4(),
       targetPackage: target?.packageName,
@@ -54,6 +55,7 @@ class CaptureRepository {
       targetPackage: target?.packageName,
       targetLabel: target?.label,
       intervalMs: interval,
+      similarityPercent: similarity,
     );
 
     if (target != null) {

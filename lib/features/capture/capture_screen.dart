@@ -123,7 +123,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     ],
                     const SizedBox(height: 14),
                     Text(
-                      'Скриншотов: $count',
+                      'Скриншотов: $count'
+                      '${session.skippedDuplicates > 0 ? ' · дублей пропущено: ${session.skippedDuplicates}' : ''}',
                       style: Theme.of(context).textTheme.headlineMedium,
                     ),
                     const SizedBox(height: 8),

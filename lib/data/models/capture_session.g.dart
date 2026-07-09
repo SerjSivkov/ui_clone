@@ -19,6 +19,7 @@ _CaptureSession _$CaptureSessionFromJson(Map<String, dynamic> json) =>
               ?.map((e) => e as String)
               .toList() ??
           const [],
+      skippedDuplicates: (json['skippedDuplicates'] as num?)?.toInt() ?? 0,
       prompt: json['prompt'] as String?,
       errorMessage: json['errorMessage'] as String?,
       startedAt: json['startedAt'] == null
@@ -36,6 +37,7 @@ Map<String, dynamic> _$CaptureSessionToJson(_CaptureSession instance) =>
       'targetLabel': instance.targetLabel,
       'status': _$CaptureStatusEnumMap[instance.status]!,
       'screenshotPaths': instance.screenshotPaths,
+      'skippedDuplicates': instance.skippedDuplicates,
       'prompt': instance.prompt,
       'errorMessage': instance.errorMessage,
       'startedAt': instance.startedAt?.toIso8601String(),

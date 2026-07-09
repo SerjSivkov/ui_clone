@@ -154,6 +154,11 @@ class MainActivity : FlutterActivity() {
                 ScreenCaptureService.EXTRA_INTERVAL_MS,
                 (args["intervalMs"] as? Number)?.toLong() ?: 1500L,
             )
+            putExtra(
+                ScreenCaptureService.EXTRA_SIMILARITY_PERCENT,
+                (args["similarityPercent"] as? Number)?.toFloat()
+                    ?: 2.5f,
+            )
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

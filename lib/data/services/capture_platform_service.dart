@@ -75,12 +75,14 @@ class CapturePlatformService {
     String? targetPackage,
     String? targetLabel,
     int intervalMs = AppConstants.defaultCaptureIntervalMs,
+    double similarityPercent = AppConstants.defaultSimilarityPercent,
   }) async {
     await _method.invokeMethod<void>('startCapture', {
       'sessionId': sessionId,
       'targetPackage': targetPackage,
       'targetLabel': targetLabel,
       'intervalMs': intervalMs,
+      'similarityPercent': similarityPercent,
     });
   }
 
@@ -111,7 +113,13 @@ sealed class CaptureEvent {
   factory CaptureEvent.screenshot({
     required String path,
     required int count,
+    required int skipped,
   }) = CaptureScreenshotTaken;
+
+  factory CaptureEvent.skipped({
+    required int skipped,
+    required int count,
+  }) = CaptureFrameSkipped;
 
   factory CaptureEvent.stopped({
     required List<String> paths,
@@ -130,6 +138,12 @@ sealed class CaptureEvent {
       case 'screenshot':
         return CaptureScreenshotTaken(
           path: map['path'] as String? ?? '',
+          count: (map['count'] as num?)?.toInt() ?? 0,
+          skipped: (map['skipped'] as num?)?.toInt() ?? 0,
+        );
+      case 'skipped':
+        return CaptureFrameSkipped(
+          skipped: (map['skipped'] as num?)?.toInt() ?? 0,
           count: (map['count'] as num?)?.toInt() ?? 0,
         );
       case 'stopped':
@@ -161,9 +175,21 @@ final class CaptureScreenshotTaken extends CaptureEvent {
   const CaptureScreenshotTaken({
     required this.path,
     required this.count,
+    this.skipped = 0,
   });
 
   final String path;
+  final int count;
+  final int skipped;
+}
+
+final class CaptureFrameSkipped extends CaptureEvent {
+  const CaptureFrameSkipped({
+    required this.skipped,
+    required this.count,
+  });
+
+  final int skipped;
   final int count;
 }
 

@@ -85,13 +85,14 @@ class CaptureController extends StateNotifier<CaptureSession> {
           targetLabel: targetLabel ?? state.targetLabel,
           status: CaptureStatus.capturing,
         );
-      case CaptureScreenshotTaken(:final path, :final count):
+      case CaptureScreenshotTaken(:final path, :final count, :final skipped):
         if (_activeGeneration != _generation) return;
         if (_captureClosed) {
           // Still accept late paths while finishing, never reopen capture.
           if (path.isNotEmpty && !state.screenshotPaths.contains(path)) {
             state = state.copyWith(
               screenshotPaths: [...state.screenshotPaths, path],
+              skippedDuplicates: skipped,
             );
           }
           return;
@@ -101,8 +102,16 @@ class CaptureController extends StateNotifier<CaptureSession> {
         if (path.isNotEmpty && !paths.contains(path)) {
           paths.add(path);
         }
-        state = state.copyWith(screenshotPaths: paths);
-        log('Screenshot #$count → $path');
+        state = state.copyWith(
+          screenshotPaths: paths,
+          skippedDuplicates: skipped,
+        );
+        log('Screenshot #$count → $path (skipped=$skipped)');
+      case CaptureFrameSkipped(:final skipped):
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed) return;
+        if (state.status != CaptureStatus.capturing) return;
+        state = state.copyWith(skippedDuplicates: skipped);
       case CaptureStopped(:final paths):
         if (_activeGeneration != _generation) return;
         if (_captureClosed) return;
@@ -136,6 +145,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
       targetPackage: target?.packageName,
       targetLabel: target?.label,
       startedAt: DateTime.now(),
+      skippedDuplicates: 0,
     );
 
     try {

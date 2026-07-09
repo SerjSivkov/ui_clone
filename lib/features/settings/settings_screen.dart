@@ -17,6 +17,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _baseUrlCtrl = TextEditingController();
   final _modelCtrl = TextEditingController();
   double _intervalSec = AppConstants.defaultCaptureIntervalMs / 1000;
+  double _similarityPercent = AppConstants.defaultSimilarityPercent;
   bool _loading = true;
   bool _obscure = true;
 
@@ -32,12 +33,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final base = await settings.getBaseUrl();
     final model = await settings.getModel();
     final interval = await settings.getCaptureIntervalMs();
+    final similarity = await settings.getSimilarityPercent();
     if (!mounted) return;
     setState(() {
       _apiKeyCtrl.text = key ?? '';
       _baseUrlCtrl.text = base;
       _modelCtrl.text = model;
       _intervalSec = interval / 1000;
+      _similarityPercent = similarity;
       _loading = false;
     });
   }
@@ -48,6 +51,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await settings.setBaseUrl(_baseUrlCtrl.text);
     await settings.setModel(_modelCtrl.text);
     await settings.setCaptureIntervalMs((_intervalSec * 1000).round());
+    await settings.setSimilarityPercent(_similarityPercent);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Сохранено')),
@@ -137,6 +141,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   divisions: 21,
                   label: '${_intervalSec.toStringAsFixed(1)} с',
                   onChanged: (v) => setState(() => _intervalSec = v),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Порог дублей: ${_similarityPercent.toStringAsFixed(1)}%',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                Text(
+                  'Кадры похожести ниже порога не сохраняются '
+                  '(меньше мусора для AI).',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.slate,
+                      ),
+                ),
+                Slider(
+                  value: _similarityPercent,
+                  min: 0.5,
+                  max: 10,
+                  divisions: 19,
+                  label: '${_similarityPercent.toStringAsFixed(1)}%',
+                  onChanged: (v) => setState(() => _similarityPercent = v),
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(

@@ -21,6 +21,7 @@ abstract class CaptureSession with _$CaptureSession {
     String? targetLabel,
     @Default(CaptureStatus.idle) CaptureStatus status,
     @Default([]) List<String> screenshotPaths,
+    @Default(0) int skippedDuplicates,
     String? prompt,
     String? errorMessage,
     DateTime? startedAt,

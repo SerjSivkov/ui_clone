@@ -5,6 +5,8 @@ abstract final class AppConstants {
       'com.mobileway.ui_clone/capture_events';
 
   static const int defaultCaptureIntervalMs = 1500;
+  /// Near-duplicate threshold (% MAD of 16×16 luma). Below → skip frame.
+  static const double defaultSimilarityPercent = 2.5;
   static const int maxScreenshotsPerSession = 40;
   static const int maxImagesForAnalysis = 8;
 
@@ -15,4 +17,5 @@ abstract final class AppConstants {
   static const String prefsBaseUrl = 'openai_base_url';
   static const String prefsModel = 'openai_model';
   static const String prefsIntervalMs = 'capture_interval_ms';
+  static const String prefsSimilarityPercent = 'capture_similarity_percent';
 }
