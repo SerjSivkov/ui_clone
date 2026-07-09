@@ -59,10 +59,11 @@ class ScreenCaptureService : Service() {
         }
 
         fun stopAndCollect(context: Context): List<String> {
+            // Do not sleep on the binder/UI thread — it freezes Flutter frames
+            // so the "stopping" button state never paints.
+            val snapshot = collectedPaths.toList()
             requestStop(context)
-            // Give the service a brief moment to flush the last frame.
-            Thread.sleep(250)
-            return collectedPaths.toList()
+            return snapshot
         }
     }
 

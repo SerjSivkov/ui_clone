@@ -5,34 +5,68 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../data/models/capture_session.dart';
+import '../result/result_screen.dart';
 import 'capture_controller.dart';
 
-class CaptureScreen extends ConsumerWidget {
+class CaptureScreen extends ConsumerStatefulWidget {
   const CaptureScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CaptureScreen> createState() => _CaptureScreenState();
+}
+
+class _CaptureScreenState extends ConsumerState<CaptureScreen> {
+  /// Latches on first stop tap / external stop so the Stop CTA cannot
+  /// reappear even if session status briefly flickers.
+  bool _stopLatched = false;
+
+  @override
+  Widget build(BuildContext context) {
     final session = ref.watch(captureControllerProvider);
     final count = session.screenshotPaths.length;
-    final isBusy = session.status == CaptureStatus.analyzing ||
-        session.status == CaptureStatus.stopping;
+
+    // Stop CTA only while a live capture is running. Any other status
+    // (including completed/failed) must never show "Остановить сбор" again.
+    final showStopButton = !_stopLatched &&
+        (session.status == CaptureStatus.capturing ||
+            session.status == CaptureStatus.requestingPermission);
+    final isProcessing = !showStopButton;
 
     ref.listen(captureControllerProvider, (prev, next) {
-      if (next.status == CaptureStatus.completed ||
-          next.status == CaptureStatus.failed ||
-          next.status == CaptureStatus.idle) {
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
+      if (!_stopLatched &&
+          (next.status == CaptureStatus.stopping ||
+              next.status == CaptureStatus.analyzing ||
+              next.status == CaptureStatus.completed ||
+              next.status == CaptureStatus.failed)) {
+        setState(() => _stopLatched = true);
+      }
+
+      if (next.status == CaptureStatus.completed &&
+          prev?.status != CaptureStatus.completed) {
+        if (!context.mounted) return;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(builder: (_) => const ResultScreen()),
+        );
+        return;
+      }
+
+      if (next.status == CaptureStatus.failed &&
+          prev?.status != CaptureStatus.failed) {
+        if (!context.mounted) return;
+        final message = next.errorMessage ?? 'Ошибка сбора';
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
       }
     });
 
     return PopScope(
-      canPop: !isBusy,
+      canPop: !isProcessing,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Сбор интерфейса'),
-          automaticallyImplyLeading: !isBusy,
+          title: Text(isProcessing ? 'Обработка' : 'Сбор интерфейса'),
+          automaticallyImplyLeading: !isProcessing,
         ),
         body: Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -55,7 +89,7 @@ class CaptureScreen extends ConsumerWidget {
                           width: 10,
                           height: 10,
                           decoration: BoxDecoration(
-                            color: session.status == CaptureStatus.capturing
+                            color: showStopButton
                                 ? AppColors.warn
                                 : AppColors.accent,
                             shape: BoxShape.circle,
@@ -63,7 +97,10 @@ class CaptureScreen extends ConsumerWidget {
                         ),
                         const SizedBox(width: 10),
                         Text(
-                          _statusLabel(session.status),
+                          _statusLabel(
+                            session.status,
+                            showStopButton: showStopButton,
+                          ),
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
@@ -91,8 +128,10 @@ class CaptureScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Листайте экраны целевого приложения. '
-                      'Остановить: кнопка ниже, уведомление или оверлей.',
+                      isProcessing
+                          ? 'Сбор остановлен. Готовим промпт…'
+                          : 'Листайте экраны целевого приложения. '
+                              'Остановить: кнопка ниже, уведомление или оверлей.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: AppColors.slate,
                           ),
@@ -105,7 +144,7 @@ class CaptureScreen extends ConsumerWidget {
                 child: count == 0
                     ? Center(
                         child: Text(
-                          isBusy
+                          isProcessing
                               ? 'Обработка…'
                               : 'Ожидание первого скриншота…',
                           style: Theme.of(context).textTheme.bodyLarge
@@ -137,35 +176,60 @@ class CaptureScreen extends ConsumerWidget {
                       ),
               ),
               const SizedBox(height: 12),
-              if (session.status == CaptureStatus.analyzing)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 12),
-                  child: Column(
-                    children: [
-                      LinearProgressIndicator(),
-                      SizedBox(height: 10),
-                      Text('AI анализирует скриншоты и собирает промпт…'),
-                    ],
+              if (isProcessing) ...[
+                const LinearProgressIndicator(),
+                const SizedBox(height: 12),
+                Text(
+                  switch (session.status) {
+                    CaptureStatus.analyzing =>
+                      'Собираем промпт по скриншотам…',
+                    CaptureStatus.completed => 'Промпт готов…',
+                    CaptureStatus.failed =>
+                      session.errorMessage ?? 'Ошибка обработки',
+                    _ => 'Останавливаем сбор…',
+                  },
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: null,
+                  icon: Icon(
+                    switch (session.status) {
+                      CaptureStatus.analyzing ||
+                      CaptureStatus.completed =>
+                        Icons.auto_awesome_rounded,
+                      CaptureStatus.failed => Icons.error_outline_rounded,
+                      _ => Icons.hourglass_top_rounded,
+                    },
+                  ),
+                  label: Text(
+                    switch (session.status) {
+                      CaptureStatus.analyzing => 'Анализ…',
+                      CaptureStatus.completed => 'Готово',
+                      CaptureStatus.failed => 'Ошибка',
+                      _ => 'Остановка…',
+                    },
+                  ),
+                  style: FilledButton.styleFrom(
+                    disabledBackgroundColor: AppColors.slate,
+                    disabledForegroundColor: Colors.white,
                   ),
                 ),
-              FilledButton.icon(
-                onPressed: isBusy
-                    ? null
-                    : () {
-                        ref
-                            .read(captureControllerProvider.notifier)
-                            .stopAndAnalyze();
-                      },
-                icon: const Icon(Icons.stop_circle_outlined),
-                label: Text(
-                  session.status == CaptureStatus.analyzing
-                      ? 'Анализ…'
-                      : 'Остановить сбор',
+              ] else
+                FilledButton.icon(
+                  onPressed: () {
+                    setState(() => _stopLatched = true);
+                    ref
+                        .read(captureControllerProvider.notifier)
+                        .stopAndAnalyze();
+                  },
+                  icon: const Icon(Icons.stop_circle_outlined),
+                  label: const Text('Остановить сбор'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.danger,
+                  ),
                 ),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.danger,
-                ),
-              ),
             ],
           ),
         ),
@@ -173,7 +237,18 @@ class CaptureScreen extends ConsumerWidget {
     );
   }
 
-  String _statusLabel(CaptureStatus status) {
+  String _statusLabel(
+    CaptureStatus status, {
+    required bool showStopButton,
+  }) {
+    if (!showStopButton) {
+      return switch (status) {
+        CaptureStatus.analyzing => 'Анализ',
+        CaptureStatus.completed => 'Готово',
+        CaptureStatus.failed => 'Ошибка',
+        _ => 'Остановка',
+      };
+    }
     return switch (status) {
       CaptureStatus.idle => 'Ожидание',
       CaptureStatus.requestingPermission => 'Запрос разрешения',

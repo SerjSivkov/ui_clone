@@ -42,7 +42,7 @@ final captureControllerProvider =
 class CaptureController extends StateNotifier<CaptureSession> {
   CaptureController(this._repo)
       : super(
-          CaptureSession(
+          const CaptureSession(
             id: '',
             status: CaptureStatus.idle,
           ),
@@ -54,34 +54,70 @@ class CaptureController extends StateNotifier<CaptureSession> {
   StreamSubscription<CaptureEvent>? _sub;
   bool _disposed = false;
 
+  /// Bumped on every start/stop. Native events from an older generation
+  /// are ignored so they cannot flip status back to [CaptureStatus.capturing].
+  int _generation = 0;
+  int _activeGeneration = 0;
+
   Future<void> _init() async {
     await _repo.initialize();
     if (_disposed) return;
     _sub = _repo.events.listen(_onEvent);
   }
 
+  bool get _captureClosed =>
+      state.status == CaptureStatus.stopping ||
+      state.status == CaptureStatus.analyzing ||
+      state.status == CaptureStatus.completed ||
+      state.status == CaptureStatus.failed;
+
   void _onEvent(CaptureEvent event) {
     if (_disposed) return;
     switch (event) {
       case CaptureStarted(:final sessionId, :final targetLabel):
+        if (_captureClosed || _activeGeneration != _generation) return;
+        if (state.status != CaptureStatus.requestingPermission &&
+            state.status != CaptureStatus.capturing) {
+          return;
+        }
         state = state.copyWith(
           id: sessionId.isNotEmpty ? sessionId : state.id,
           targetLabel: targetLabel ?? state.targetLabel,
           status: CaptureStatus.capturing,
         );
       case CaptureScreenshotTaken(:final path, :final count):
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed) {
+          // Still accept late paths while finishing, never reopen capture.
+          if (path.isNotEmpty && !state.screenshotPaths.contains(path)) {
+            state = state.copyWith(
+              screenshotPaths: [...state.screenshotPaths, path],
+            );
+          }
+          return;
+        }
+        if (state.status != CaptureStatus.capturing) return;
         final paths = [...state.screenshotPaths];
         if (path.isNotEmpty && !paths.contains(path)) {
           paths.add(path);
         }
-        state = state.copyWith(
-          screenshotPaths: paths,
-          status: CaptureStatus.capturing,
-        );
+        state = state.copyWith(screenshotPaths: paths);
         log('Screenshot #$count → $path');
       case CaptureStopped(:final paths):
-        unawaited(_finishWithPaths(paths));
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed) return;
+        // External stop (notification / overlay): same generation fence
+        // as the in-app Stop button.
+        _generation++;
+        _activeGeneration = _generation;
+        unawaited(_finishWithPaths(paths, generation: _generation));
       case CaptureError(:final message):
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed && state.status != CaptureStatus.stopping) {
+          return;
+        }
+        _generation++;
+        _activeGeneration = _generation;
         state = state.copyWith(
           status: CaptureStatus.failed,
           errorMessage: message,
@@ -90,20 +126,34 @@ class CaptureController extends StateNotifier<CaptureSession> {
   }
 
   Future<void> start({InstalledApp? target}) async {
-    state = state.copyWith(
+    _generation++;
+    final generation = _generation;
+    _activeGeneration = generation;
+
+    state = CaptureSession(
+      id: '',
       status: CaptureStatus.requestingPermission,
-      errorMessage: null,
-      prompt: null,
-      screenshotPaths: const [],
-      finishedAt: null,
       targetPackage: target?.packageName,
       targetLabel: target?.label,
+      startedAt: DateTime.now(),
     );
+
     try {
       final session = await _repo.startSession(target: target);
-      state = session;
+      // User may have stopped (or a new start begun) while the system
+      // MediaProjection dialog was open.
+      if (generation != _generation) return;
+      if (state.status != CaptureStatus.requestingPermission &&
+          state.status != CaptureStatus.capturing) {
+        return;
+      }
+      state = session.copyWith(
+        targetPackage: target?.packageName ?? session.targetPackage,
+        targetLabel: target?.label ?? session.targetLabel,
+      );
     } catch (e, st) {
       log('startCapture failed', error: e, stackTrace: st);
+      if (generation != _generation) return;
       state = state.copyWith(
         status: CaptureStatus.failed,
         errorMessage: e.toString(),
@@ -112,16 +162,28 @@ class CaptureController extends StateNotifier<CaptureSession> {
   }
 
   Future<void> stopAndAnalyze() async {
+    if (_captureClosed) return;
     if (state.status != CaptureStatus.capturing &&
         state.status != CaptureStatus.requestingPermission) {
       return;
     }
+
+    // Invalidate live capture generation so late native events cannot
+    // restore [CaptureStatus.capturing].
+    _generation++;
+    final generation = _generation;
+    _activeGeneration = generation;
+
     state = state.copyWith(status: CaptureStatus.stopping);
+    await Future<void>.delayed(Duration.zero);
+
     try {
       final paths = await _repo.stopCapture();
-      await _finishWithPaths(paths);
+      if (generation != _generation) return;
+      await _finishWithPaths(paths, generation: generation);
     } catch (e, st) {
       log('stopCapture failed', error: e, stackTrace: st);
+      if (generation != _generation) return;
       state = state.copyWith(
         status: CaptureStatus.failed,
         errorMessage: e.toString(),
@@ -129,25 +191,39 @@ class CaptureController extends StateNotifier<CaptureSession> {
     }
   }
 
-  Future<void> _finishWithPaths(List<String> paths) async {
+  Future<void> _finishWithPaths(
+    List<String> paths, {
+    required int generation,
+  }) async {
+    if (generation != _generation) return;
+
+    // Close capture UI immediately — before any await — so the Stop
+    // button cannot come back from a status flicker.
     final merged = <String>{
       ...state.screenshotPaths,
       ...paths,
     }.toList(growable: false);
 
+    state = state.copyWith(
+      screenshotPaths: merged,
+      status: CaptureStatus.stopping,
+    );
+    await Future<void>.delayed(Duration.zero);
+    if (generation != _generation) return;
+
     if (merged.isEmpty) {
       state = state.copyWith(
         status: CaptureStatus.failed,
-        errorMessage: 'Скриншоты не собраны. Проверьте разрешение записи экрана.',
+        errorMessage:
+            'Скриншоты не собраны. Проверьте разрешение записи экрана.',
         finishedAt: DateTime.now(),
       );
       return;
     }
 
-    state = state.copyWith(
-      screenshotPaths: merged,
-      status: CaptureStatus.analyzing,
-    );
+    state = state.copyWith(status: CaptureStatus.analyzing);
+    await Future<void>.delayed(Duration.zero);
+    if (generation != _generation) return;
 
     try {
       final prompt = await _repo.analyze(
@@ -155,6 +231,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
         targetLabel: state.targetLabel,
         targetPackage: state.targetPackage,
       );
+      if (generation != _generation || _disposed) return;
       state = state.copyWith(
         prompt: prompt,
         status: CaptureStatus.completed,
@@ -162,6 +239,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
       );
     } catch (e, st) {
       log('analyze failed', error: e, stackTrace: st);
+      if (generation != _generation || _disposed) return;
       state = state.copyWith(
         status: CaptureStatus.failed,
         errorMessage: e.toString(),
@@ -171,13 +249,16 @@ class CaptureController extends StateNotifier<CaptureSession> {
   }
 
   void reset() {
-    state = CaptureSession(id: '', status: CaptureStatus.idle);
+    _generation++;
+    _activeGeneration = _generation;
+    state = const CaptureSession(id: '', status: CaptureStatus.idle);
   }
 
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _generation++;
     unawaited(_sub?.cancel());
     super.dispose();
   }

@@ -6,7 +6,6 @@ import '../../data/models/capture_session.dart';
 import '../app_picker/app_picker_screen.dart';
 import '../capture/capture_controller.dart';
 import '../capture/capture_screen.dart';
-import '../result/result_screen.dart';
 import '../settings/settings_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -17,18 +16,18 @@ class HomeScreen extends ConsumerWidget {
     final session = ref.watch(captureControllerProvider);
 
     ref.listen(captureControllerProvider, (prev, next) {
-      if (next.status == CaptureStatus.capturing &&
-          prev?.status != CaptureStatus.capturing) {
+      // Open capture UI only when a live session begins — never when a late
+      // event tries to look like capturing again after stop.
+      final startedCapture = next.status == CaptureStatus.capturing &&
+          (prev?.status == CaptureStatus.requestingPermission ||
+              prev?.status == CaptureStatus.idle);
+      if (startedCapture) {
         Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (_) => const CaptureScreen()),
         );
       }
-      if (next.status == CaptureStatus.completed &&
-          prev?.status != CaptureStatus.completed) {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const ResultScreen()),
-        );
-      }
+      // Result is opened from CaptureScreen via pushReplacement to avoid
+      // stacking a fresh CaptureScreen under/over the prompt.
     });
 
     return Scaffold(
