@@ -23,6 +23,7 @@ abstract final class AppConstants {
 
   static const String defaultOpenAiBaseUrl = 'https://api.openai.com/v1';
   static const String defaultVisionModel = 'gpt-4o-mini';
+  static const String defaultPromptTemplateId = 'flutter';
 
   static const String prefsApiKey = 'openai_api_key';
   static const String prefsBaseUrl = 'openai_base_url';
@@ -31,4 +32,6 @@ abstract final class AppConstants {
   static const String prefsSimilarityPercent = 'capture_similarity_percent';
   static const String prefsCaptureMode = 'capture_mode';
   static const String prefsMaxSessionSec = 'capture_max_session_sec';
+  static const String prefsPromptTemplateId = 'prompt_template_id';
+  static const String prefsSystemPrompt = 'system_prompt';
 }

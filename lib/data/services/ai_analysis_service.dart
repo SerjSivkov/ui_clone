@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/app_constants.dart';
+import '../prompt_templates.dart';
 import 'settings_service.dart';
 
 class AiAnalysisService {
@@ -42,12 +43,14 @@ class AiAnalysisService {
 
     final baseUrl = await settings.getBaseUrl();
     final model = await settings.getModel();
+    final promptBody = await settings.getSystemPrompt();
     final content = <Map<String, dynamic>>[
       {
         'type': 'text',
-        'text': _systemPrompt(
-          targetLabel: targetLabel,
-          targetPackage: targetPackage,
+        'text': PromptTemplates.apply(
+          body: promptBody,
+          app: targetLabel ?? targetPackage ?? 'unknown app',
+          package: targetPackage,
           count: selected.length,
         ),
       },
@@ -119,37 +122,6 @@ class AiAnalysisService {
       picked.add(paths[(i * step).floor()]);
     }
     return picked;
-  }
-
-  String _systemPrompt({
-    required String? targetLabel,
-    required String? targetPackage,
-    required int count,
-  }) {
-    final app = targetLabel ?? targetPackage ?? 'unknown app';
-    return '''
-Ты — senior product designer + Flutter UI engineer.
-Проанализируй $count скриншотов приложения "$app"
-${targetPackage != null ? '(package: $targetPackage)' : ''}.
-
-Составь ОДИН готовый промпт на русском для генерации клона UI
-(для Cursor / Claude / GPT / Flutter-агента). Промпт должен включать:
-
-1. Общий стиль: цветовая палитра (HEX если видно), типографика, плотность,
-   скругления, тени, светлая/тёмная тема, атмосфера.
-2. Навигация: таббар / drawer / стек экранов, иерархия.
-3. По каждому заметному экрану: layout (сверху вниз), ключевые блоки,
-   расположение кнопок/полей (примерно: top/center/bottom, left/right),
-   состояния (empty/loading/error если видно).
-4. Компоненты: кнопки, карточки, списки, чипы, инпуты, иконки — размеры
-   и поведение.
-5. Функции, которые угадываются по UI (что делает экран).
-6. Технические указания для Flutter: Material 3 / custom, структура
-   виджетов, что НЕ копировать (брендинг/логотипы/контент пользователя).
-
-Формат ответа — только итоговый промпт, без преамбулы.
-Используй markdown-заголовки и маркированные списки.
-''';
   }
 
   String _buildOfflinePrompt({

@@ -2,6 +2,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../prompt_templates.dart';
 
 class SettingsService {
   SettingsService({
@@ -100,5 +101,43 @@ class SettingsService {
       AppConstants.prefsMaxSessionSec,
       value.clamp(60, 900),
     );
+  }
+
+  Future<String> getPromptTemplateId() async {
+    final prefs = await _prefsFuture;
+    final value = prefs.getString(AppConstants.prefsPromptTemplateId);
+    if (value != null && PromptTemplates.isKnownId(value)) {
+      return value;
+    }
+    return AppConstants.defaultPromptTemplateId;
+  }
+
+  Future<void> setPromptTemplateId(String value) async {
+    final prefs = await _prefsFuture;
+    final id = PromptTemplates.isKnownId(value)
+        ? value
+        : AppConstants.defaultPromptTemplateId;
+    await prefs.setString(AppConstants.prefsPromptTemplateId, id);
+  }
+
+  /// Custom system prompt body. Empty / missing → use template default.
+  Future<String> getSystemPrompt() async {
+    final prefs = await _prefsFuture;
+    final stored = prefs.getString(AppConstants.prefsSystemPrompt);
+    if (stored != null && stored.trim().isNotEmpty) {
+      return stored;
+    }
+    final id = await getPromptTemplateId();
+    return PromptTemplates.defaultBody(id);
+  }
+
+  Future<void> setSystemPrompt(String value) async {
+    final prefs = await _prefsFuture;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      await prefs.remove(AppConstants.prefsSystemPrompt);
+      return;
+    }
+    await prefs.setString(AppConstants.prefsSystemPrompt, value);
   }
 }

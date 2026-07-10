@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/prompt_templates.dart';
 import '../about/about_screen.dart';
 import '../capture/capture_controller.dart';
 
@@ -17,10 +18,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _apiKeyCtrl = TextEditingController();
   final _baseUrlCtrl = TextEditingController();
   final _modelCtrl = TextEditingController();
+  final _promptCtrl = TextEditingController();
   double _intervalSec = AppConstants.defaultCaptureIntervalMs / 1000;
   double _similarityPercent = AppConstants.defaultSimilarityPercent;
   String _captureMode = AppConstants.defaultCaptureMode;
   double _maxSessionMin = AppConstants.defaultMaxSessionSec / 60;
+  String _promptTemplateId = AppConstants.defaultPromptTemplateId;
   bool _loading = true;
   bool _obscure = true;
 
@@ -39,6 +42,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final similarity = await settings.getSimilarityPercent();
     final captureMode = await settings.getCaptureMode();
     final maxSessionSec = await settings.getMaxSessionSec();
+    final templateId = await settings.getPromptTemplateId();
+    final systemPrompt = await settings.getSystemPrompt();
     if (!mounted) return;
     setState(() {
       _apiKeyCtrl.text = key ?? '';
@@ -48,6 +53,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _similarityPercent = similarity;
       _captureMode = captureMode;
       _maxSessionMin = maxSessionSec / 60;
+      _promptTemplateId = templateId;
+      _promptCtrl.text = systemPrompt;
       _loading = false;
     });
   }
@@ -61,10 +68,54 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await settings.setSimilarityPercent(_similarityPercent);
     await settings.setCaptureMode(_captureMode);
     await settings.setMaxSessionSec((_maxSessionMin * 60).round());
+    await settings.setPromptTemplateId(_promptTemplateId);
+    await settings.setSystemPrompt(_promptCtrl.text);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Сохранено')),
     );
+  }
+
+  bool get _promptDirty {
+    final current = _promptCtrl.text.trim();
+    final defaults = PromptTemplates.defaultBody(_promptTemplateId).trim();
+    return current != defaults;
+  }
+
+  Future<void> _onTemplateChanged(String? id) async {
+    if (id == null || id == _promptTemplateId) return;
+    if (_promptDirty) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Сменить шаблон?'),
+          content: const Text(
+            'Текущий текст промпта будет заменён текстом выбранного шаблона.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Заменить'),
+            ),
+          ],
+        ),
+      );
+      if (go != true || !mounted) return;
+    }
+    setState(() {
+      _promptTemplateId = id;
+      _promptCtrl.text = PromptTemplates.defaultBody(id);
+    });
+  }
+
+  void _resetPromptToTemplate() {
+    setState(() {
+      _promptCtrl.text = PromptTemplates.defaultBody(_promptTemplateId);
+    });
   }
 
   @override
@@ -72,6 +123,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _apiKeyCtrl.dispose();
     _baseUrlCtrl.dispose();
     _modelCtrl.dispose();
+    _promptCtrl.dispose();
     super.dispose();
   }
 
@@ -131,6 +183,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Модель',
                     hintText: 'gpt-4o-mini',
+                  ),
+                ),
+                const SizedBox(height: 28),
+                Text(
+                  'Промпт',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Системный промпт для vision-анализа. Плейсхолдеры '
+                  '{{app}}, {{package}}, {{count}} подставляются при анализе.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.slate,
+                      ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  // ignore: deprecated_member_use
+                  value: _promptTemplateId,
+                  decoration: const InputDecoration(
+                    labelText: 'Шаблон',
+                  ),
+                  items: [
+                    for (final t in PromptTemplates.all)
+                      DropdownMenuItem(
+                        value: t.id,
+                        child: Text(t.title),
+                      ),
+                  ],
+                  onChanged: _onTemplateChanged,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _promptCtrl,
+                  minLines: 8,
+                  maxLines: 16,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: const InputDecoration(
+                    labelText: 'Системный промпт',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _resetPromptToTemplate,
+                    icon: const Icon(Icons.restart_alt_rounded),
+                    label: const Text('Сбросить к шаблону'),
                   ),
                 ),
                 const SizedBox(height: 28),
