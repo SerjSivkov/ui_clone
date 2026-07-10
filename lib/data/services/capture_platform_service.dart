@@ -76,6 +76,7 @@ class CapturePlatformService {
     String? targetLabel,
     int intervalMs = AppConstants.defaultCaptureIntervalMs,
     double similarityPercent = AppConstants.defaultSimilarityPercent,
+    String captureMode = AppConstants.defaultCaptureMode,
   }) async {
     await _method.invokeMethod<void>('startCapture', {
       'sessionId': sessionId,
@@ -83,6 +84,7 @@ class CapturePlatformService {
       'targetLabel': targetLabel,
       'intervalMs': intervalMs,
       'similarityPercent': similarityPercent,
+      'captureMode': captureMode,
     });
   }
 

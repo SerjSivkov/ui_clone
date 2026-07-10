@@ -35,6 +35,7 @@ class ScreenCaptureService : Service() {
     companion object {
         const val ACTION_START = "com.mobileway.ui_clone.capture.START"
         const val ACTION_STOP = "com.mobileway.ui_clone.capture.STOP"
+        const val ACTION_SHOT = "com.mobileway.ui_clone.capture.SHOT"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
         const val EXTRA_SESSION_ID = "sessionId"
@@ -42,6 +43,8 @@ class ScreenCaptureService : Service() {
         const val EXTRA_TARGET_LABEL = "targetLabel"
         const val EXTRA_INTERVAL_MS = "intervalMs"
         const val EXTRA_SIMILARITY_PERCENT = "similarityPercent"
+        /** timer | manual | both */
+        const val EXTRA_CAPTURE_MODE = "captureMode"
 
         private const val CHANNEL_ID = "ui_clone_capture"
         private const val NOTIFICATION_ID = 7101
@@ -55,6 +58,13 @@ class ScreenCaptureService : Service() {
         fun requestStop(context: Context) {
             val intent = Intent(context, ScreenCaptureService::class.java).apply {
                 action = ACTION_STOP
+            }
+            context.startService(intent)
+        }
+
+        fun requestShot(context: Context) {
+            val intent = Intent(context, ScreenCaptureService::class.java).apply {
+                action = ACTION_SHOT
             }
             context.startService(intent)
         }
@@ -78,6 +88,8 @@ class ScreenCaptureService : Service() {
     private var sessionId: String = ""
     private var targetLabel: String? = null
     private var intervalMs: Long = 1500L
+    /** timer | manual | both */
+    private var captureMode: String = "timer"
     private var width = 0
     private var height = 0
     private var density = 0
@@ -85,6 +97,12 @@ class ScreenCaptureService : Service() {
     private val isCapturing = AtomicBoolean(false)
     private val isSaving = AtomicBoolean(false)
     private var similarityGate = FrameSimilarityGate()
+
+    private val allowsTimer: Boolean
+        get() = captureMode == "timer" || captureMode == "both"
+
+    private val allowsManual: Boolean
+        get() = captureMode == "manual" || captureMode == "both"
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -101,6 +119,13 @@ class ScreenCaptureService : Service() {
             ACTION_STOP -> {
                 finalizeCapture()
                 stopSelf()
+            }
+            ACTION_SHOT -> {
+                if (isCapturing.get() && allowsManual) {
+                    // Manual shots bypass similarity gate so the user always
+                    // gets the frame they asked for.
+                    handler?.post { captureFrame(forceKeep = true) }
+                }
             }
             ACTION_START -> startCapture(intent)
         }
@@ -128,6 +153,11 @@ class ScreenCaptureService : Service() {
         sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: ""
         targetLabel = intent.getStringExtra(EXTRA_TARGET_LABEL)
         intervalMs = intent.getLongExtra(EXTRA_INTERVAL_MS, 1500L).coerceIn(800L, 5000L)
+        captureMode = when (intent.getStringExtra(EXTRA_CAPTURE_MODE)) {
+            "manual" -> "manual"
+            "both" -> "both"
+            else -> "timer"
+        }
         val similarityPercent = intent
             .getFloatExtra(EXTRA_SIMILARITY_PERCENT, FrameSimilarityGate.DEFAULT_MAX_DIFF_PERCENT)
             .coerceIn(0.5f, 15f)
@@ -173,27 +203,30 @@ class ScreenCaptureService : Service() {
         )
 
         isCapturing.set(true)
-        CaptureOverlayService.show(this, 0)
+        CaptureOverlayService.show(this, 0, showShotButton = allowsManual)
         CaptureEventBus.emit(
             mapOf(
                 "type" to "started",
                 "sessionId" to sessionId,
                 "targetLabel" to targetLabel,
+                "captureMode" to captureMode,
             ),
         )
 
-        val runnable = object : Runnable {
-            override fun run() {
-                if (!isCapturing.get()) return
-                captureFrame()
-                handler?.postDelayed(this, intervalMs)
+        if (allowsTimer) {
+            val runnable = object : Runnable {
+                override fun run() {
+                    if (!isCapturing.get()) return
+                    captureFrame(forceKeep = false)
+                    handler?.postDelayed(this, intervalMs)
+                }
             }
+            captureRunnable = runnable
+            handler?.postDelayed(runnable, 600L)
         }
-        captureRunnable = runnable
-        handler?.postDelayed(runnable, 600L)
     }
 
-    private fun captureFrame() {
+    private fun captureFrame(forceKeep: Boolean = false) {
         if (!isCapturing.get() || isSaving.get()) return
         if (collectedPaths.size >= MAX_SHOTS) {
             finalizeCapture()
@@ -220,7 +253,7 @@ class ScreenCaptureService : Service() {
             val cropped = Bitmap.createBitmap(bitmap, 0, 0, width, height)
             bitmap.recycle()
 
-            if (!similarityGate.shouldKeep(cropped)) {
+            if (!forceKeep && !similarityGate.shouldKeep(cropped)) {
                 cropped.recycle()
                 CaptureEventBus.emit(
                     mapOf(
@@ -230,6 +263,9 @@ class ScreenCaptureService : Service() {
                     ),
                 )
                 return
+            }
+            if (forceKeep) {
+                similarityGate.remember(cropped)
             }
 
             val dir = File(cacheDir, "captures/$sessionId").apply { mkdirs() }
@@ -242,13 +278,14 @@ class ScreenCaptureService : Service() {
             collectedPaths.add(file.absolutePath)
             val count = collectedPaths.size
             updateNotification(count)
-            CaptureOverlayService.updateCount(this, count)
+            CaptureOverlayService.updateCount(this, count, showShotButton = allowsManual)
             CaptureEventBus.emit(
                 mapOf(
                     "type" to "screenshot",
                     "path" to file.absolutePath,
                     "count" to count,
                     "skipped" to similarityGate.skippedCount(),
+                    "manual" to forceKeep,
                 ),
             )
         } catch (e: Exception) {
@@ -358,15 +395,34 @@ class ScreenCaptureService : Service() {
         val label = targetLabel?.let { " · $it" } ?: ""
         val skipped = similarityGate.skippedCount()
         val skippedPart = if (skipped > 0) " · дублей пропущено: $skipped" else ""
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val modeHint = when (captureMode) {
+            "manual" -> " · «+ кадр» или Стоп"
+            "both" -> " · таймер + «+ кадр»"
+            else -> " · «Стоп»"
+        }
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("UI Clone: идёт сбор$label")
-            .setContentText("Скриншотов: $count$skippedPart · «Стоп»")
+            .setContentText("Скриншотов: $count$skippedPart$modeHint")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(openPending)
             .setOngoing(true)
-            .addAction(0, "Стоп", stopPending)
             .setOnlyAlertOnce(true)
-            .build()
+
+        if (allowsManual) {
+            val shotIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                action = ACTION_SHOT
+            }
+            val shotPending = PendingIntent.getService(
+                this,
+                2,
+                shotIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.addAction(0, "+ кадр", shotPending)
+        }
+        builder.addAction(0, "Стоп", stopPending)
+        return builder.build()
     }
 
     private fun updateNotification(count: Int) {

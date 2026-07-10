@@ -18,6 +18,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _modelCtrl = TextEditingController();
   double _intervalSec = AppConstants.defaultCaptureIntervalMs / 1000;
   double _similarityPercent = AppConstants.defaultSimilarityPercent;
+  String _captureMode = AppConstants.defaultCaptureMode;
   bool _loading = true;
   bool _obscure = true;
 
@@ -34,6 +35,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final model = await settings.getModel();
     final interval = await settings.getCaptureIntervalMs();
     final similarity = await settings.getSimilarityPercent();
+    final captureMode = await settings.getCaptureMode();
     if (!mounted) return;
     setState(() {
       _apiKeyCtrl.text = key ?? '';
@@ -41,6 +43,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _modelCtrl.text = model;
       _intervalSec = interval / 1000;
       _similarityPercent = similarity;
+      _captureMode = captureMode;
       _loading = false;
     });
   }
@@ -52,6 +55,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await settings.setModel(_modelCtrl.text);
     await settings.setCaptureIntervalMs((_intervalSec * 1000).round());
     await settings.setSimilarityPercent(_similarityPercent);
+    await settings.setCaptureMode(_captureMode);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Сохранено')),
@@ -131,17 +135,61 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Интервал скриншотов: ${_intervalSec.toStringAsFixed(1)} с',
+                  'Режим сбора',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                Slider(
-                  value: _intervalSec,
-                  min: 0.8,
-                  max: 5,
-                  divisions: 21,
-                  label: '${_intervalSec.toStringAsFixed(1)} с',
-                  onChanged: (v) => setState(() => _intervalSec = v),
+                const SizedBox(height: 8),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 'timer',
+                      label: Text('Таймер'),
+                      icon: Icon(Icons.timer_outlined),
+                    ),
+                    ButtonSegment(
+                      value: 'manual',
+                      label: Text('Вручную'),
+                      icon: Icon(Icons.touch_app_outlined),
+                    ),
+                    ButtonSegment(
+                      value: 'both',
+                      label: Text('Оба'),
+                      icon: Icon(Icons.merge_type_outlined),
+                    ),
+                  ],
+                  selected: {_captureMode},
+                  onSelectionChanged: (set) {
+                    setState(() => _captureMode = set.first);
+                  },
                 ),
+                const SizedBox(height: 6),
+                Text(
+                  switch (_captureMode) {
+                    'manual' =>
+                      'Кадры только по кнопке «+ кадр» в оверлее / уведомлении.',
+                    'both' =>
+                      'Таймер + ручные снимки «+ кадр» поверх таймера.',
+                    _ => 'Автоматические скриншоты по интервалу.',
+                  },
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.slate,
+                      ),
+                ),
+                if (_captureMode != 'manual') ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'Интервал скриншотов: ${_intervalSec.toStringAsFixed(1)} с',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  Slider(
+                    value: _intervalSec,
+                    min: 0.8,
+                    max: 5,
+                    divisions: 21,
+                    label: '${_intervalSec.toStringAsFixed(1)} с',
+                    onChanged: (v) => setState(() => _intervalSec = v),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Text(
                   'Порог дублей: ${_similarityPercent.toStringAsFixed(1)}%',
@@ -149,7 +197,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 Text(
                   'Кадры похожести ниже порога не сохраняются '
-                  '(меньше мусора для AI).',
+                  '(ручной «+ кадр» всегда сохраняется).',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppColors.slate,
                       ),

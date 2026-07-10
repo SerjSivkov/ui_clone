@@ -68,4 +68,23 @@ class SettingsService {
     final prefs = await _prefsFuture;
     await prefs.setDouble(AppConstants.prefsSimilarityPercent, value);
   }
+
+  /// `timer` | `manual` | `both`
+  Future<String> getCaptureMode() async {
+    final prefs = await _prefsFuture;
+    final value = prefs.getString(AppConstants.prefsCaptureMode);
+    return switch (value) {
+      'manual' || 'both' || 'timer' => value!,
+      _ => AppConstants.defaultCaptureMode,
+    };
+  }
+
+  Future<void> setCaptureMode(String value) async {
+    final prefs = await _prefsFuture;
+    final normalized = switch (value) {
+      'manual' || 'both' => value,
+      _ => 'timer',
+    };
+    await prefs.setString(AppConstants.prefsCaptureMode, normalized);
+  }
 }

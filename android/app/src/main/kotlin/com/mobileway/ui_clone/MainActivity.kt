@@ -159,6 +159,10 @@ class MainActivity : FlutterActivity() {
                 (args["similarityPercent"] as? Number)?.toFloat()
                     ?: 2.5f,
             )
+            putExtra(
+                ScreenCaptureService.EXTRA_CAPTURE_MODE,
+                args["captureMode"] as? String ?: "timer",
+            )
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

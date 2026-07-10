@@ -131,8 +131,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     Text(
                       isProcessing
                           ? 'Сбор остановлен. Готовим промпт…'
-                          : 'Листайте экраны целевого приложения. '
-                              'Остановить: кнопка ниже, уведомление или оверлей.',
+                          : 'Листайте экраны цели. Стоп — кнопка ниже, '
+                              'уведомление или оверлей. В режимах «Вручную» / '
+                              '«Оба» жмите «+ кадр» в оверлее или шторке.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: AppColors.slate,
                           ),

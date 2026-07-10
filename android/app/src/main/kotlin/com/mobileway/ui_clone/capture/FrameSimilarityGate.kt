@@ -43,6 +43,11 @@ class FrameSimilarityGate(
         return true
     }
 
+    /** Update baseline without counting a skip (e.g. after a forced manual shot). */
+    fun remember(bitmap: Bitmap) {
+        lastFingerprint = fingerprint(bitmap)
+    }
+
     private fun fingerprint(source: Bitmap): IntArray {
         val scaled = Bitmap.createScaledBitmap(source, SIZE, SIZE, true)
         val pixels = IntArray(SIZE * SIZE)
