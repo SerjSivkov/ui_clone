@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../data/models/capture_session.dart';
 import '../result/result_screen.dart';
 import 'capture_controller.dart';
+import 'screenshot_thumb.dart';
 
 class CaptureScreen extends ConsumerStatefulWidget {
   const CaptureScreen({super.key});
@@ -277,20 +276,26 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                         itemCount: count,
                         itemBuilder: (context, index) {
                           final path = session.screenshotPaths[index];
-                          return ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Image.file(
-                              File(path),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Container(
-                                color: AppColors.mist,
-                                child: const Icon(Icons.broken_image_outlined),
-                              ),
-                            ),
+                          final canDelete = showLiveControls && count > 1;
+                          return ScreenshotThumb(
+                            path: path,
+                            canDelete: canDelete,
+                            onDelete: () => _confirmRemove(context, path),
                           );
                         },
                       ),
               ),
+              if (showLiveControls && count > 1) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Нажмите × на кадре, чтобы убрать его из сбора '
+                  '(минимум 1 скриншот).',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.slate,
+                      ),
+                ),
+              ],
               const SizedBox(height: 12),
               if (isProcessing) ...[
                 if (session.status == CaptureStatus.analyzing) ...[
@@ -476,5 +481,44 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     final m = totalSec ~/ 60;
     final s = totalSec % 60;
     return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _confirmRemove(BuildContext context, String path) async {
+    final count = ref.read(captureControllerProvider).screenshotPaths.length;
+    if (count <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Должен остаться хотя бы один скриншот'),
+        ),
+      );
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить кадр?'),
+        content: const Text(
+          'Скриншот будет убран из сбора и не попадёт в анализ.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final error =
+        ref.read(captureControllerProvider.notifier).removeScreenshot(path);
+    if (error != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+    }
   }
 }

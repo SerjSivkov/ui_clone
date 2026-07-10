@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -72,6 +73,9 @@ class CaptureController extends StateNotifier<CaptureSession> {
   CancelToken? _analyzeCancel;
   Timer? _etaTicker;
 
+  /// Paths the user removed from the session; ignored if native re-emits them.
+  final Set<String> _userRemovedPaths = <String>{};
+
   static String? _nonEmpty(String? value) {
     final t = value?.trim();
     if (t == null || t.isEmpty) return null;
@@ -130,6 +134,9 @@ class CaptureController extends StateNotifier<CaptureSession> {
         ):
         if (_activeGeneration != _generation) return;
         _rememberForeground(foregroundPackage, foregroundLabel);
+        if (path.isNotEmpty && _userRemovedPaths.contains(path)) {
+          return;
+        }
         if (_captureClosed) {
           // Still accept late paths while finishing, never reopen capture.
           if (path.isNotEmpty && !state.screenshotPaths.contains(path)) {
@@ -282,6 +289,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
     _sessionTargetLabel = _nonEmpty(target?.label);
     _inferredPackage = null;
     _inferredLabel = null;
+    _userRemovedPaths.clear();
 
     state = CaptureSession(
       id: '',
@@ -391,7 +399,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
     final merged = <String>{
       ...state.screenshotPaths,
       ...paths,
-    }.toList(growable: false);
+    }.where((p) => !_userRemovedPaths.contains(p)).toList(growable: false);
 
     state = state.copyWith(
       screenshotPaths: merged,
@@ -569,6 +577,40 @@ class CaptureController extends StateNotifier<CaptureSession> {
     token.cancel('user');
   }
 
+  /// Removes a screenshot from the session. Keeps at least one.
+  /// Returns an error message when blocked; null on success.
+  String? removeScreenshot(String path) {
+    if (path.isEmpty) return 'Путь к скриншоту пуст';
+    if (state.status == CaptureStatus.analyzing ||
+        state.status == CaptureStatus.stopping) {
+      return 'Нельзя удалять кадры во время анализа';
+    }
+    final paths = state.screenshotPaths;
+    if (!paths.contains(path)) return 'Скриншот уже удалён';
+    if (paths.length <= 1) {
+      return 'Должен остаться хотя бы один скриншот';
+    }
+
+    _userRemovedPaths.add(path);
+    state = state.copyWith(
+      screenshotPaths: [
+        for (final p in paths)
+          if (p != path) p,
+      ],
+    );
+    unawaited(
+      Future(() async {
+        try {
+          final file = File(path);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (_) {}
+      }),
+    );
+    return null;
+  }
+
   void _startEtaTicker() {
     _etaTicker?.cancel();
     _etaTicker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -612,6 +654,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
     _sessionTargetLabel = null;
     _inferredPackage = null;
     _inferredLabel = null;
+    _userRemovedPaths.clear();
     state = const CaptureSession(id: '', status: CaptureStatus.idle);
   }
 
