@@ -74,6 +74,12 @@ class CaptureRepository {
 
   Future<List<String>> stopCapture() => platform.stopCapture();
 
+  Future<void> pauseCapture() => platform.pauseCapture();
+
+  Future<void> resumeCapture() => platform.resumeCapture();
+
+  Future<void> togglePauseCapture() => platform.togglePauseCapture();
+
   Future<String> analyze({
     required List<String> paths,
     String? targetLabel,

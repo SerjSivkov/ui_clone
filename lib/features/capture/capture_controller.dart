@@ -97,7 +97,10 @@ class CaptureController extends StateNotifier<CaptureSession> {
           }
           return;
         }
-        if (state.status != CaptureStatus.capturing) return;
+        if (state.status != CaptureStatus.capturing &&
+            state.status != CaptureStatus.paused) {
+          return;
+        }
         final paths = [...state.screenshotPaths];
         if (path.isNotEmpty && !paths.contains(path)) {
           paths.add(path);
@@ -110,8 +113,33 @@ class CaptureController extends StateNotifier<CaptureSession> {
       case CaptureFrameSkipped(:final skipped):
         if (_activeGeneration != _generation) return;
         if (_captureClosed) return;
-        if (state.status != CaptureStatus.capturing) return;
+        if (state.status != CaptureStatus.capturing &&
+            state.status != CaptureStatus.paused) {
+          return;
+        }
         state = state.copyWith(skippedDuplicates: skipped);
+      case CapturePaused(:final skipped):
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed) return;
+        if (state.status != CaptureStatus.capturing &&
+            state.status != CaptureStatus.paused) {
+          return;
+        }
+        state = state.copyWith(
+          status: CaptureStatus.paused,
+          skippedDuplicates: skipped,
+        );
+      case CaptureResumed(:final skipped):
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed) return;
+        if (state.status != CaptureStatus.paused &&
+            state.status != CaptureStatus.capturing) {
+          return;
+        }
+        state = state.copyWith(
+          status: CaptureStatus.capturing,
+          skippedDuplicates: skipped,
+        );
       case CaptureStopped(:final paths):
         if (_activeGeneration != _generation) return;
         if (_captureClosed) return;
@@ -174,6 +202,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
   Future<void> stopAndAnalyze() async {
     if (_captureClosed) return;
     if (state.status != CaptureStatus.capturing &&
+        state.status != CaptureStatus.paused &&
         state.status != CaptureStatus.requestingPermission) {
       return;
     }
@@ -198,6 +227,19 @@ class CaptureController extends StateNotifier<CaptureSession> {
         status: CaptureStatus.failed,
         errorMessage: e.toString(),
       );
+    }
+  }
+
+  Future<void> togglePause() async {
+    if (_captureClosed) return;
+    if (state.status != CaptureStatus.capturing &&
+        state.status != CaptureStatus.paused) {
+      return;
+    }
+    try {
+      await _repo.togglePauseCapture();
+    } catch (e, st) {
+      log('togglePause failed', error: e, stackTrace: st);
     }
   }
 

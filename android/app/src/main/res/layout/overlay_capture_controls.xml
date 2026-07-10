@@ -38,6 +38,21 @@
         android:visibility="gone" />
 
     <TextView
+        android:id="@+id/overlay_pause"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:background="@drawable/overlay_pause_bg"
+        android:paddingStart="14dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="8dp"
+        android:text="Пауза"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <TextView
         android:id="@+id/overlay_stop"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

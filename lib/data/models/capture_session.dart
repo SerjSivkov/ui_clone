@@ -7,6 +7,7 @@ enum CaptureStatus {
   idle,
   requestingPermission,
   capturing,
+  paused,
   stopping,
   analyzing,
   completed,

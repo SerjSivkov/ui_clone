@@ -22,8 +22,14 @@ class CaptureOverlayService : Service() {
         const val ACTION_HIDE = "com.mobileway.ui_clone.overlay.HIDE"
         const val EXTRA_COUNT = "count"
         const val EXTRA_SHOW_SHOT = "showShot"
+        const val EXTRA_PAUSED = "paused"
 
-        fun show(context: Context, count: Int = 0, showShotButton: Boolean = false) {
+        fun show(
+            context: Context,
+            count: Int = 0,
+            showShotButton: Boolean = false,
+            paused: Boolean = false,
+        ) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
                 !Settings.canDrawOverlays(context)
             ) {
@@ -33,6 +39,7 @@ class CaptureOverlayService : Service() {
                 action = ACTION_SHOW
                 putExtra(EXTRA_COUNT, count)
                 putExtra(EXTRA_SHOW_SHOT, showShotButton)
+                putExtra(EXTRA_PAUSED, paused)
             }
             context.startService(intent)
         }
@@ -44,8 +51,13 @@ class CaptureOverlayService : Service() {
             context.startService(intent)
         }
 
-        fun updateCount(context: Context, count: Int, showShotButton: Boolean = false) {
-            show(context, count, showShotButton = showShotButton)
+        fun update(
+            context: Context,
+            count: Int,
+            showShotButton: Boolean = false,
+            paused: Boolean = false,
+        ) {
+            show(context, count, showShotButton = showShotButton, paused = paused)
         }
     }
 
@@ -53,6 +65,7 @@ class CaptureOverlayService : Service() {
     private var overlayView: View? = null
     private var countView: TextView? = null
     private var shotButton: View? = null
+    private var pauseButton: TextView? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -65,9 +78,11 @@ class CaptureOverlayService : Service() {
             ACTION_SHOW, null -> {
                 val count = intent?.getIntExtra(EXTRA_COUNT, 0) ?: 0
                 val showShot = intent?.getBooleanExtra(EXTRA_SHOW_SHOT, false) ?: false
+                val paused = intent?.getBooleanExtra(EXTRA_PAUSED, false) ?: false
                 ensureOverlay()
                 countView?.text = count.toString()
                 shotButton?.visibility = if (showShot) View.VISIBLE else View.GONE
+                pauseButton?.text = if (paused) "Далее" else "Пауза"
             }
         }
         return START_STICKY
@@ -87,10 +102,14 @@ class CaptureOverlayService : Service() {
         val view = inflater.inflate(R.layout.overlay_capture_controls, null)
         countView = view.findViewById(R.id.overlay_count)
         shotButton = view.findViewById(R.id.overlay_shot)
+        pauseButton = view.findViewById(R.id.overlay_pause)
         val stopButton = view.findViewById<View>(R.id.overlay_stop)
 
         shotButton?.setOnClickListener {
             ScreenCaptureService.requestShot(this)
+        }
+        pauseButton?.setOnClickListener {
+            ScreenCaptureService.requestTogglePause(this)
         }
         stopButton.setOnClickListener {
             ScreenCaptureService.requestStop(this)
@@ -156,6 +175,7 @@ class CaptureOverlayService : Service() {
         overlayView = null
         countView = null
         shotButton = null
+        pauseButton = null
     }
 
     override fun onDestroy() {

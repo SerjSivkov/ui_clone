@@ -25,12 +25,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     final session = ref.watch(captureControllerProvider);
     final count = session.screenshotPaths.length;
 
-    // Stop CTA only while a live capture is running. Any other status
-    // (including completed/failed) must never show "Остановить сбор" again.
-    final showStopButton = !_stopLatched &&
+    // Live controls while capturing or paused.
+    final showLiveControls = !_stopLatched &&
         (session.status == CaptureStatus.capturing ||
+            session.status == CaptureStatus.paused ||
             session.status == CaptureStatus.requestingPermission);
-    final isProcessing = !showStopButton;
+    final isPaused = session.status == CaptureStatus.paused;
+    final isProcessing = !showLiveControls;
 
     ref.listen(captureControllerProvider, (prev, next) {
       if (!_stopLatched &&
@@ -89,8 +90,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                           width: 10,
                           height: 10,
                           decoration: BoxDecoration(
-                            color: showStopButton
-                                ? AppColors.warn
+                            color: showLiveControls
+                                ? (isPaused
+                                    ? AppColors.slate
+                                    : AppColors.warn)
                                 : AppColors.accent,
                             shape: BoxShape.circle,
                           ),
@@ -99,7 +102,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                         Text(
                           _statusLabel(
                             session.status,
-                            showStopButton: showStopButton,
+                            showLiveControls: showLiveControls,
                           ),
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
@@ -131,9 +134,12 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     Text(
                       isProcessing
                           ? 'Сбор остановлен. Готовим промпт…'
-                          : 'Листайте экраны цели. Стоп — кнопка ниже, '
-                              'уведомление или оверлей. В режимах «Вручную» / '
-                              '«Оба» жмите «+ кадр» в оверлее или шторке.',
+                          : isPaused
+                              ? 'Пауза: таймер остановлен. «+ кадр» в оверлее '
+                                  'всё ещё работает. Нажмите «Далее».'
+                              : 'Листайте экраны цели. Пауза / Стоп — оверлей, '
+                                  'уведомление или кнопки ниже. В режимах '
+                                  '«Вручную» / «Оба» жмите «+ кадр».',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: AppColors.slate,
                           ),
@@ -218,7 +224,21 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     disabledForegroundColor: Colors.white,
                   ),
                 ),
-              ] else
+              ] else ...[
+                OutlinedButton.icon(
+                  onPressed: () {
+                    ref
+                        .read(captureControllerProvider.notifier)
+                        .togglePause();
+                  },
+                  icon: Icon(
+                    isPaused
+                        ? Icons.play_arrow_rounded
+                        : Icons.pause_rounded,
+                  ),
+                  label: Text(isPaused ? 'Далее' : 'Пауза'),
+                ),
+                const SizedBox(height: 10),
                 FilledButton.icon(
                   onPressed: () {
                     setState(() => _stopLatched = true);
@@ -232,6 +252,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     backgroundColor: AppColors.danger,
                   ),
                 ),
+              ],
             ],
           ),
         ),
@@ -241,9 +262,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
   String _statusLabel(
     CaptureStatus status, {
-    required bool showStopButton,
+    required bool showLiveControls,
   }) {
-    if (!showStopButton) {
+    if (!showLiveControls) {
       return switch (status) {
         CaptureStatus.analyzing => 'Анализ',
         CaptureStatus.completed => 'Готово',
@@ -255,6 +276,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       CaptureStatus.idle => 'Ожидание',
       CaptureStatus.requestingPermission => 'Запрос разрешения',
       CaptureStatus.capturing => 'Идёт запись',
+      CaptureStatus.paused => 'Пауза',
       CaptureStatus.stopping => 'Остановка',
       CaptureStatus.analyzing => 'Анализ AI',
       CaptureStatus.completed => 'Готово',

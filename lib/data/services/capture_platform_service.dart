@@ -94,6 +94,18 @@ class CapturePlatformService {
     return raw.whereType<String>().toList(growable: false);
   }
 
+  Future<void> pauseCapture() async {
+    await _method.invokeMethod<void>('pauseCapture');
+  }
+
+  Future<void> resumeCapture() async {
+    await _method.invokeMethod<void>('resumeCapture');
+  }
+
+  Future<void> togglePauseCapture() async {
+    await _method.invokeMethod<void>('togglePauseCapture');
+  }
+
   Future<void> openApp(String packageName) async {
     await _method.invokeMethod<void>('openApp', {'packageName': packageName});
   }
@@ -123,6 +135,16 @@ sealed class CaptureEvent {
     required int count,
   }) = CaptureFrameSkipped;
 
+  factory CaptureEvent.paused({
+    required int count,
+    required int skipped,
+  }) = CapturePaused;
+
+  factory CaptureEvent.resumed({
+    required int count,
+    required int skipped,
+  }) = CaptureResumed;
+
   factory CaptureEvent.stopped({
     required List<String> paths,
   }) = CaptureStopped;
@@ -147,6 +169,16 @@ sealed class CaptureEvent {
         return CaptureFrameSkipped(
           skipped: (map['skipped'] as num?)?.toInt() ?? 0,
           count: (map['count'] as num?)?.toInt() ?? 0,
+        );
+      case 'paused':
+        return CapturePaused(
+          count: (map['count'] as num?)?.toInt() ?? 0,
+          skipped: (map['skipped'] as num?)?.toInt() ?? 0,
+        );
+      case 'resumed':
+        return CaptureResumed(
+          count: (map['count'] as num?)?.toInt() ?? 0,
+          skipped: (map['skipped'] as num?)?.toInt() ?? 0,
         );
       case 'stopped':
         final paths = (map['paths'] as List<dynamic>?)
@@ -193,6 +225,26 @@ final class CaptureFrameSkipped extends CaptureEvent {
 
   final int skipped;
   final int count;
+}
+
+final class CapturePaused extends CaptureEvent {
+  const CapturePaused({
+    required this.count,
+    required this.skipped,
+  });
+
+  final int count;
+  final int skipped;
+}
+
+final class CaptureResumed extends CaptureEvent {
+  const CaptureResumed({
+    required this.count,
+    required this.skipped,
+  });
+
+  final int count;
+  final int skipped;
 }
 
 final class CaptureStopped extends CaptureEvent {

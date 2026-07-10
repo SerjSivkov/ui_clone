@@ -48,6 +48,7 @@ const _$CaptureStatusEnumMap = {
   CaptureStatus.idle: 'idle',
   CaptureStatus.requestingPermission: 'requestingPermission',
   CaptureStatus.capturing: 'capturing',
+  CaptureStatus.paused: 'paused',
   CaptureStatus.stopping: 'stopping',
   CaptureStatus.analyzing: 'analyzing',
   CaptureStatus.completed: 'completed',

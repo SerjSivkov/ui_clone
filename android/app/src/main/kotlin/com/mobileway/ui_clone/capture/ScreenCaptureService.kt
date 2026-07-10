@@ -36,6 +36,9 @@ class ScreenCaptureService : Service() {
         const val ACTION_START = "com.mobileway.ui_clone.capture.START"
         const val ACTION_STOP = "com.mobileway.ui_clone.capture.STOP"
         const val ACTION_SHOT = "com.mobileway.ui_clone.capture.SHOT"
+        const val ACTION_TOGGLE_PAUSE = "com.mobileway.ui_clone.capture.TOGGLE_PAUSE"
+        const val ACTION_PAUSE = "com.mobileway.ui_clone.capture.PAUSE"
+        const val ACTION_RESUME = "com.mobileway.ui_clone.capture.RESUME"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
         const val EXTRA_SESSION_ID = "sessionId"
@@ -69,6 +72,27 @@ class ScreenCaptureService : Service() {
             context.startService(intent)
         }
 
+        fun requestTogglePause(context: Context) {
+            val intent = Intent(context, ScreenCaptureService::class.java).apply {
+                action = ACTION_TOGGLE_PAUSE
+            }
+            context.startService(intent)
+        }
+
+        fun requestPause(context: Context) {
+            val intent = Intent(context, ScreenCaptureService::class.java).apply {
+                action = ACTION_PAUSE
+            }
+            context.startService(intent)
+        }
+
+        fun requestResume(context: Context) {
+            val intent = Intent(context, ScreenCaptureService::class.java).apply {
+                action = ACTION_RESUME
+            }
+            context.startService(intent)
+        }
+
         fun stopAndCollect(context: Context): List<String> {
             // Do not sleep on the binder/UI thread — it freezes Flutter frames
             // so the "stopping" button state never paints.
@@ -95,6 +119,7 @@ class ScreenCaptureService : Service() {
     private var density = 0
 
     private val isCapturing = AtomicBoolean(false)
+    private val isPaused = AtomicBoolean(false)
     private val isSaving = AtomicBoolean(false)
     private var similarityGate = FrameSimilarityGate()
 
@@ -121,11 +146,20 @@ class ScreenCaptureService : Service() {
                 stopSelf()
             }
             ACTION_SHOT -> {
+                // Manual shots work even while paused (selective capture).
                 if (isCapturing.get() && allowsManual) {
-                    // Manual shots bypass similarity gate so the user always
-                    // gets the frame they asked for.
                     handler?.post { captureFrame(forceKeep = true) }
                 }
+            }
+            ACTION_TOGGLE_PAUSE -> {
+                if (!isCapturing.get()) return START_STICKY
+                if (isPaused.get()) resumeCapture() else pauseCapture()
+            }
+            ACTION_PAUSE -> {
+                if (isCapturing.get()) pauseCapture()
+            }
+            ACTION_RESUME -> {
+                if (isCapturing.get()) resumeCapture()
             }
             ACTION_START -> startCapture(intent)
         }
@@ -203,7 +237,8 @@ class ScreenCaptureService : Service() {
         )
 
         isCapturing.set(true)
-        CaptureOverlayService.show(this, 0, showShotButton = allowsManual)
+        isPaused.set(false)
+        refreshChrome(0)
         CaptureEventBus.emit(
             mapOf(
                 "type" to "started",
@@ -213,21 +248,65 @@ class ScreenCaptureService : Service() {
             ),
         )
 
-        if (allowsTimer) {
-            val runnable = object : Runnable {
-                override fun run() {
-                    if (!isCapturing.get()) return
+        startTimerLoop(initialDelayMs = 600L)
+    }
+
+    private fun startTimerLoop(initialDelayMs: Long = intervalMs) {
+        if (!allowsTimer) return
+        captureRunnable?.let { handler?.removeCallbacks(it) }
+        val runnable = object : Runnable {
+            override fun run() {
+                if (!isCapturing.get()) return
+                if (!isPaused.get()) {
                     captureFrame(forceKeep = false)
-                    handler?.postDelayed(this, intervalMs)
                 }
+                handler?.postDelayed(this, intervalMs)
             }
-            captureRunnable = runnable
-            handler?.postDelayed(runnable, 600L)
         }
+        captureRunnable = runnable
+        handler?.postDelayed(runnable, initialDelayMs)
+    }
+
+    private fun pauseCapture() {
+        if (!isCapturing.get() || isPaused.getAndSet(true)) return
+        captureRunnable?.let { handler?.removeCallbacks(it) }
+        refreshChrome(collectedPaths.size)
+        CaptureEventBus.emit(
+            mapOf(
+                "type" to "paused",
+                "count" to collectedPaths.size,
+                "skipped" to similarityGate.skippedCount(),
+            ),
+        )
+    }
+
+    private fun resumeCapture() {
+        if (!isCapturing.get() || !isPaused.getAndSet(false)) return
+        refreshChrome(collectedPaths.size)
+        CaptureEventBus.emit(
+            mapOf(
+                "type" to "resumed",
+                "count" to collectedPaths.size,
+                "skipped" to similarityGate.skippedCount(),
+            ),
+        )
+        startTimerLoop(initialDelayMs = 300L)
+    }
+
+    private fun refreshChrome(count: Int) {
+        updateNotification(count)
+        CaptureOverlayService.update(
+            this,
+            count,
+            showShotButton = allowsManual,
+            paused = isPaused.get(),
+        )
     }
 
     private fun captureFrame(forceKeep: Boolean = false) {
         if (!isCapturing.get() || isSaving.get()) return
+        // Auto frames respect pause; forced manual shots do not.
+        if (!forceKeep && isPaused.get()) return
         if (collectedPaths.size >= MAX_SHOTS) {
             finalizeCapture()
             stopSelf()
@@ -277,8 +356,7 @@ class ScreenCaptureService : Service() {
 
             collectedPaths.add(file.absolutePath)
             val count = collectedPaths.size
-            updateNotification(count)
-            CaptureOverlayService.updateCount(this, count, showShotButton = allowsManual)
+            refreshChrome(count)
             CaptureEventBus.emit(
                 mapOf(
                     "type" to "screenshot",
@@ -302,6 +380,7 @@ class ScreenCaptureService : Service() {
         if (!isCapturing.getAndSet(false) && mediaProjection == null) {
             return
         }
+        isPaused.set(false)
         captureRunnable?.let { handler?.removeCallbacks(it) }
         captureRunnable = null
 
@@ -392,17 +471,24 @@ class ScreenCaptureService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        val paused = isPaused.get()
         val label = targetLabel?.let { " · $it" } ?: ""
         val skipped = similarityGate.skippedCount()
         val skippedPart = if (skipped > 0) " · дублей пропущено: $skipped" else ""
-        val modeHint = when (captureMode) {
-            "manual" -> " · «+ кадр» или Стоп"
-            "both" -> " · таймер + «+ кадр»"
+        val statusTitle = if (paused) {
+            "UI Clone: пауза$label"
+        } else {
+            "UI Clone: идёт сбор$label"
+        }
+        val modeHint = when {
+            paused -> " · «Далее» или Стоп"
+            captureMode == "manual" -> " · «+ кадр» или Стоп"
+            captureMode == "both" -> " · таймер + «+ кадр»"
             else -> " · «Стоп»"
         }
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("UI Clone: идёт сбор$label")
+            .setContentTitle(statusTitle)
             .setContentText("Скриншотов: $count$skippedPart$modeHint")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(openPending)
@@ -421,6 +507,17 @@ class ScreenCaptureService : Service() {
             )
             builder.addAction(0, "+ кадр", shotPending)
         }
+
+        val pauseIntent = Intent(this, ScreenCaptureService::class.java).apply {
+            action = ACTION_TOGGLE_PAUSE
+        }
+        val pausePending = PendingIntent.getService(
+            this,
+            3,
+            pauseIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        builder.addAction(0, if (paused) "Далее" else "Пауза", pausePending)
         builder.addAction(0, "Стоп", stopPending)
         return builder.build()
     }

@@ -84,6 +84,18 @@ class MainActivity : FlutterActivity() {
                     val paths = ScreenCaptureService.stopAndCollect(this)
                     result.success(paths)
                 }
+                "pauseCapture" -> {
+                    ScreenCaptureService.requestPause(this)
+                    result.success(null)
+                }
+                "resumeCapture" -> {
+                    ScreenCaptureService.requestResume(this)
+                    result.success(null)
+                }
+                "togglePauseCapture" -> {
+                    ScreenCaptureService.requestTogglePause(this)
+                    result.success(null)
+                }
                 "openApp" -> {
                     val packageName = call.argument<String>("packageName")
                     if (packageName.isNullOrBlank()) {
