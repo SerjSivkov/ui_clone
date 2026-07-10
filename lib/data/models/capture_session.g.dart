@@ -27,6 +27,7 @@ _CaptureSession _$CaptureSessionFromJson(Map<String, dynamic> json) =>
       targetMismatch: json['targetMismatch'] as bool? ?? false,
       currentForegroundLabel: json['currentForegroundLabel'] as String?,
       prompt: json['prompt'] as String?,
+      structuredJson: json['structuredJson'] as String?,
       errorMessage: json['errorMessage'] as String?,
       startedAt: json['startedAt'] == null
           ? null
@@ -51,6 +52,7 @@ Map<String, dynamic> _$CaptureSessionToJson(_CaptureSession instance) =>
       'targetMismatch': instance.targetMismatch,
       'currentForegroundLabel': instance.currentForegroundLabel,
       'prompt': instance.prompt,
+      'structuredJson': instance.structuredJson,
       'errorMessage': instance.errorMessage,
       'startedAt': instance.startedAt?.toIso8601String(),
       'finishedAt': instance.finishedAt?.toIso8601String(),

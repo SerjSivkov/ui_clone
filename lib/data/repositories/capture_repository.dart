@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/constants/app_constants.dart';
 import '../models/capture_session.dart';
 import '../models/installed_app.dart';
+import '../models/ui_clone_analysis.dart';
 import '../services/ai_analysis_service.dart';
 import '../services/capture_platform_service.dart';
 import '../services/settings_service.dart';
@@ -93,7 +94,7 @@ class CaptureRepository {
 
   Future<void> togglePauseCapture() => platform.togglePauseCapture();
 
-  Future<String> analyze({
+  Future<AnalysisResult> analyze({
     required List<String> paths,
     String? targetLabel,
     String? targetPackage,

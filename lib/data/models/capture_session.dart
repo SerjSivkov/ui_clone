@@ -35,7 +35,10 @@ abstract class CaptureSession with _$CaptureSession {
     @Default(false) bool targetMismatch,
     /// Label of the app currently in foreground (UsageStats hint).
     String? currentForegroundLabel,
+    /// Human-readable clone prompt (markdown).
     String? prompt,
+    /// Pretty-printed structured JSON (palette / screens / components).
+    String? structuredJson,
     String? errorMessage,
     DateTime? startedAt,
     DateTime? finishedAt,

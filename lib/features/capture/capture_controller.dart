@@ -357,14 +357,15 @@ class CaptureController extends StateNotifier<CaptureSession> {
     if (generation != _generation) return;
 
     try {
-      final prompt = await _repo.analyze(
+      final result = await _repo.analyze(
         paths: merged,
         targetLabel: state.targetLabel,
         targetPackage: state.targetPackage,
       );
       if (generation != _generation || _disposed) return;
       state = state.copyWith(
-        prompt: prompt,
+        prompt: result.markdown,
+        structuredJson: result.structuredJson,
         status: CaptureStatus.completed,
         finishedAt: DateTime.now(),
       );

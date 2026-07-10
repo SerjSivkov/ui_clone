@@ -8,7 +8,9 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/app_constants.dart';
+import '../models/ui_clone_analysis.dart';
 import '../prompt_templates.dart';
+import 'analysis_response_parser.dart';
 import 'settings_service.dart';
 
 class AiAnalysisService {
@@ -20,19 +22,21 @@ class AiAnalysisService {
   final SettingsService settings;
   final Dio _dio;
 
-  Future<String> analyzeScreenshots({
+  Future<AnalysisResult> analyzeScreenshots({
     required List<String> imagePaths,
     String? targetLabel,
     String? targetPackage,
   }) async {
     final apiKey = await settings.getApiKey();
     if (apiKey == null || apiKey.isEmpty) {
-      return _buildOfflinePrompt(
-        imagePaths: imagePaths,
-        targetLabel: targetLabel,
-        targetPackage: targetPackage,
-        reason: 'API-ключ не задан. Ниже — шаблон промпта по собранным '
-            'скриншотам; укажите ключ в настройках для vision-анализа.',
+      return AnalysisResponseParser.fromMarkdownOnly(
+        _buildOfflinePrompt(
+          imagePaths: imagePaths,
+          targetLabel: targetLabel,
+          targetPackage: targetPackage,
+          reason: 'API-ключ не задан. Ниже — шаблон промпта по собранным '
+              'скриншотам; укажите ключ в настройках для vision-анализа.',
+        ),
       );
     }
 
@@ -44,15 +48,16 @@ class AiAnalysisService {
     final baseUrl = await settings.getBaseUrl();
     final model = await settings.getModel();
     final promptBody = await settings.getSystemPrompt();
+    final instruction = PromptTemplates.apply(
+      body: promptBody,
+      app: targetLabel ?? targetPackage ?? 'unknown app',
+      package: targetPackage,
+      count: selected.length,
+    );
     final content = <Map<String, dynamic>>[
       {
         'type': 'text',
-        'text': PromptTemplates.apply(
-          body: promptBody,
-          app: targetLabel ?? targetPackage ?? 'unknown app',
-          package: targetPackage,
-          count: selected.length,
-        ),
+        'text': '$instruction${AnalysisResponseParser.responseFormatInstruction}',
       },
     ];
 
@@ -99,15 +104,17 @@ class AiAnalysisService {
       if (text == null || text.trim().isEmpty) {
         throw StateError('Пустой ответ модели');
       }
-      return text.trim();
+      return AnalysisResponseParser.parse(text);
     } on DioException catch (e, st) {
       log('AI analysis failed: ${e.message}', stackTrace: st);
-      return _buildOfflinePrompt(
-        imagePaths: imagePaths,
-        targetLabel: targetLabel,
-        targetPackage: targetPackage,
-        reason: 'Vision API недоступен (${e.message}). '
-            'Используйте шаблон ниже и приложите скриншоты вручную.',
+      return AnalysisResponseParser.fromMarkdownOnly(
+        _buildOfflinePrompt(
+          imagePaths: imagePaths,
+          targetLabel: targetLabel,
+          targetPackage: targetPackage,
+          reason: 'Vision API недоступен (${e.message}). '
+              'Используйте шаблон ниже и приложите скриншоты вручную.',
+        ),
       );
     }
   }
