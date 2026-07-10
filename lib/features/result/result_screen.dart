@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../data/models/capture_session.dart';
 import '../capture/capture_controller.dart';
+import 'reanalyze_sheet.dart';
 
 class ResultScreen extends ConsumerStatefulWidget {
   const ResultScreen({super.key});
@@ -18,6 +20,7 @@ class ResultScreen extends ConsumerStatefulWidget {
 class _ResultScreenState extends ConsumerState<ResultScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
+  bool _reanalyzing = false;
 
   @override
   void initState() {
@@ -43,13 +46,98 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
     return markdown;
   }
 
+  Future<void> _onReanalyze() async {
+    if (_reanalyzing) return;
+    final confirmed = await showReanalyzeSheet(context, ref);
+    if (!confirmed || !mounted) return;
+
+    setState(() => _reanalyzing = true);
+    final error =
+        await ref.read(captureControllerProvider.notifier).reanalyze();
+    if (!mounted) return;
+    setState(() => _reanalyzing = false);
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Анализ обновлён')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(captureControllerProvider);
+    final analyzing = session.status == CaptureStatus.analyzing;
     final markdown = session.prompt ?? '';
     final structuredJson = session.structuredJson;
     final hasJson =
         structuredJson != null && structuredJson.trim().isNotEmpty;
+
+    if (analyzing) {
+      return PopScope(
+        canPop: false,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Повторный анализ'),
+            automaticallyImplyLeading: false,
+          ),
+          body: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  session.targetLabel ?? 'Сессия захвата',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${session.screenshotPaths.length} скриншотов · '
+                  'те же кадры, новые настройки AI',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.slate,
+                      ),
+                ),
+                const Spacer(),
+                LinearProgressIndicator(
+                  value: session.analysisProgress?.clamp(0.0, 1.0),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _analysisDetail(session),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _analysisPhaseLabel(session.analysisPhase),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.slate,
+                      ),
+                ),
+                const Spacer(),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    ref
+                        .read(captureControllerProvider.notifier)
+                        .cancelAnalysis();
+                  },
+                  icon: const Icon(Icons.close_rounded),
+                  label: const Text('Отменить анализ'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -179,17 +267,61 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: FilledButton(
-              onPressed: () {
-                ref.read(captureControllerProvider.notifier).reset();
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
-              child: const Text('Новый обзор'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: session.screenshotPaths.isEmpty || _reanalyzing
+                      ? null
+                      : _onReanalyze,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Повторить анализ'),
+                ),
+                const SizedBox(height: 10),
+                FilledButton(
+                  onPressed: () {
+                    ref.read(captureControllerProvider.notifier).reset();
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                  },
+                  child: const Text('Новый обзор'),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _analysisPhaseLabel(String? phase) {
+    return switch (phase) {
+      'preparing' => 'Подготовка изображений',
+      'uploading' => 'Отправка в AI',
+      'waiting' => 'Ждём ответ модели',
+      _ => 'Анализ AI',
+    };
+  }
+
+  String _analysisDetail(CaptureSession session) {
+    final done = session.analysisImagesDone;
+    final total = session.analysisImagesTotal;
+    final images = total > 0 ? '$done/$total' : (done > 0 ? '$done' : '…');
+    final eta = session.analysisEtaSec;
+    final etaLabel = eta == null
+        ? null
+        : eta <= 0
+            ? 'скоро'
+            : '~$eta с';
+    return switch (session.analysisPhase) {
+      'preparing' =>
+        etaLabel == null ? 'Сжатие $images' : 'Сжатие $images · $etaLabel',
+      'uploading' =>
+        etaLabel == null ? 'Загрузка $images' : 'Загрузка $images · $etaLabel',
+      'waiting' => etaLabel == null
+          ? 'Анализ $images фото'
+          : 'Анализ $images фото · $etaLabel',
+      _ => 'Собираем промпт…',
+    };
   }
 }
 

@@ -412,6 +412,48 @@ class CaptureController extends StateNotifier<CaptureSession> {
       return;
     }
 
+    await _runAnalysis(
+      paths: merged,
+      generation: generation,
+      restorePreviousOnFailure: false,
+    );
+  }
+
+  /// Re-run vision analysis on the current session screenshots using the
+  /// latest Settings (provider / model / system prompt).
+  ///
+  /// Returns an error message when the previous result was kept; null on
+  /// success or if a newer generation superseded this run.
+  Future<String?> reanalyze() async {
+    final paths = state.screenshotPaths;
+    if (paths.isEmpty) {
+      return 'Нет скриншотов для повторного анализа';
+    }
+    if (state.status == CaptureStatus.analyzing) {
+      return 'Анализ уже выполняется';
+    }
+
+    _generation++;
+    final generation = _generation;
+    _activeGeneration = generation;
+
+    return _runAnalysis(
+      paths: List<String>.from(paths),
+      generation: generation,
+      restorePreviousOnFailure: true,
+    );
+  }
+
+  /// Runs AI analysis. When [restorePreviousOnFailure] is true, keeps the
+  /// previous prompt/JSON and [CaptureStatus.completed] on cancel/error.
+  Future<String?> _runAnalysis({
+    required List<String> paths,
+    required int generation,
+    required bool restorePreviousOnFailure,
+  }) async {
+    final previousPrompt = state.prompt;
+    final previousJson = state.structuredJson;
+
     state = state.copyWith(
       status: CaptureStatus.analyzing,
       analysisProgress: 0.02,
@@ -419,10 +461,11 @@ class CaptureController extends StateNotifier<CaptureSession> {
       analysisImagesDone: 0,
       analysisImagesTotal: 0,
       analysisEtaSec: null,
+      errorMessage: null,
     );
     _startEtaTicker();
     await Future<void>.delayed(Duration.zero);
-    if (generation != _generation) return;
+    if (generation != _generation) return null;
 
     final label = _resolvedLabel();
     final package = _resolvedPackage();
@@ -431,7 +474,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
 
     try {
       final result = await _repo.analyze(
-        paths: merged,
+        paths: paths,
         targetLabel: label,
         targetPackage: package,
         cancelToken: cancel,
@@ -447,7 +490,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
           );
         },
       );
-      if (generation != _generation || _disposed) return;
+      if (generation != _generation || _disposed) return null;
       _stopEtaTicker();
       state = state.copyWith(
         prompt: result.markdown,
@@ -458,30 +501,60 @@ class CaptureController extends StateNotifier<CaptureSession> {
         targetPackage: package ?? state.targetPackage,
         analysisProgress: 1,
         analysisEtaSec: 0,
+        errorMessage: null,
       );
+      return null;
     } on AnalysisCancelledException {
-      if (generation != _generation || _disposed) return;
+      if (generation != _generation || _disposed) return null;
       _stopEtaTicker();
-      state = state.copyWith(
-        status: CaptureStatus.failed,
-        errorMessage: 'Анализ отменён',
-        finishedAt: DateTime.now(),
-        analysisProgress: null,
-        analysisPhase: null,
-        analysisEtaSec: null,
-      );
+      const message = 'Анализ отменён';
+      if (restorePreviousOnFailure) {
+        state = state.copyWith(
+          status: CaptureStatus.completed,
+          prompt: previousPrompt,
+          structuredJson: previousJson,
+          analysisProgress: null,
+          analysisPhase: null,
+          analysisEtaSec: null,
+          errorMessage: null,
+        );
+      } else {
+        state = state.copyWith(
+          status: CaptureStatus.failed,
+          errorMessage: message,
+          finishedAt: DateTime.now(),
+          analysisProgress: null,
+          analysisPhase: null,
+          analysisEtaSec: null,
+        );
+      }
+      return message;
     } catch (e, st) {
       log('analyze failed', error: e, stackTrace: st);
-      if (generation != _generation || _disposed) return;
+      if (generation != _generation || _disposed) return null;
       _stopEtaTicker();
-      state = state.copyWith(
-        status: CaptureStatus.failed,
-        errorMessage: e.toString(),
-        finishedAt: DateTime.now(),
-        analysisProgress: null,
-        analysisPhase: null,
-        analysisEtaSec: null,
-      );
+      final message = e.toString();
+      if (restorePreviousOnFailure) {
+        state = state.copyWith(
+          status: CaptureStatus.completed,
+          prompt: previousPrompt,
+          structuredJson: previousJson,
+          analysisProgress: null,
+          analysisPhase: null,
+          analysisEtaSec: null,
+          errorMessage: null,
+        );
+      } else {
+        state = state.copyWith(
+          status: CaptureStatus.failed,
+          errorMessage: message,
+          finishedAt: DateTime.now(),
+          analysisProgress: null,
+          analysisPhase: null,
+          analysisEtaSec: null,
+        );
+      }
+      return message;
     } finally {
       _stopEtaTicker();
       if (identical(_analyzeCancel, cancel)) {
