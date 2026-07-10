@@ -3,6 +3,7 @@ package com.mobileway.ui_clone.overlay
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -11,10 +12,13 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.TextView
 import com.mobileway.ui_clone.R
 import com.mobileway.ui_clone.capture.ScreenCaptureService
+import kotlin.math.abs
 
 class CaptureOverlayService : Service() {
     companion object {
@@ -23,6 +27,11 @@ class CaptureOverlayService : Service() {
         const val EXTRA_COUNT = "count"
         const val EXTRA_SHOW_SHOT = "showShot"
         const val EXTRA_PAUSED = "paused"
+
+        private const val PREFS = "overlay_controls"
+        private const val KEY_X = "x"
+        private const val KEY_Y = "y"
+        private const val KEY_HAS_POS = "has_pos"
 
         fun show(
             context: Context,
@@ -63,9 +72,13 @@ class CaptureOverlayService : Service() {
 
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
+    private var layoutParams: WindowManager.LayoutParams? = null
     private var countView: TextView? = null
-    private var shotButton: View? = null
-    private var pauseButton: TextView? = null
+    private var shotButton: ImageView? = null
+    private var pauseButton: ImageView? = null
+
+    private val prefs: SharedPreferences
+        get() = getSharedPreferences(PREFS, MODE_PRIVATE)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -82,7 +95,15 @@ class CaptureOverlayService : Service() {
                 ensureOverlay()
                 countView?.text = count.toString()
                 shotButton?.visibility = if (showShot) View.VISIBLE else View.GONE
-                pauseButton?.text = if (paused) "Далее" else "Пауза"
+                pauseButton?.let { btn ->
+                    if (paused) {
+                        btn.setImageResource(R.drawable.ic_overlay_play)
+                        btn.contentDescription = getString(R.string.overlay_resume)
+                    } else {
+                        btn.setImageResource(R.drawable.ic_overlay_pause)
+                        btn.contentDescription = getString(R.string.overlay_pause)
+                    }
+                }
             }
         }
         return START_STICKY
@@ -103,7 +124,8 @@ class CaptureOverlayService : Service() {
         countView = view.findViewById(R.id.overlay_count)
         shotButton = view.findViewById(R.id.overlay_shot)
         pauseButton = view.findViewById(R.id.overlay_pause)
-        val stopButton = view.findViewById<View>(R.id.overlay_stop)
+        val stopButton = view.findViewById<ImageView>(R.id.overlay_stop)
+        val dragHandle = view.findViewById<View>(R.id.overlay_drag)
 
         shotButton?.setOnClickListener {
             ScreenCaptureService.requestShot(this)
@@ -130,39 +152,79 @@ class CaptureOverlayService : Service() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            gravity = Gravity.TOP or Gravity.END
-            x = 24
-            y = 180
+            gravity = Gravity.TOP or Gravity.START
+            val saved = prefs
+            if (saved.getBoolean(KEY_HAS_POS, false)) {
+                x = saved.getInt(KEY_X, 24)
+                y = saved.getInt(KEY_Y, 180)
+            } else {
+                val metrics = resources.displayMetrics
+                // Default: top-right-ish until first layout measures width.
+                x = (metrics.widthPixels * 0.55f).toInt()
+                y = (180 * metrics.density).toInt()
+            }
         }
 
-        var startX = 0
-        var startY = 0
-        var paramX = 0
-        var paramY = 0
+        attachDrag(dragHandle, view, params)
+        // Also allow dragging from the counter label.
+        attachDrag(countView!!, view, params)
 
-        view.setOnTouchListener { _, event ->
-            when (event.action) {
+        windowManager?.addView(view, params)
+        overlayView = view
+        layoutParams = params
+    }
+
+    private fun attachDrag(
+        handle: View,
+        panel: View,
+        params: WindowManager.LayoutParams,
+    ) {
+        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
+        var startRawX = 0f
+        var startRawY = 0f
+        var startParamX = 0
+        var startParamY = 0
+        var dragging = false
+
+        handle.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    startX = event.rawX.toInt()
-                    startY = event.rawY.toInt()
-                    paramX = params.x
-                    paramY = params.y
+                    startRawX = event.rawX
+                    startRawY = event.rawY
+                    startParamX = params.x
+                    startParamY = params.y
+                    dragging = false
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = startX - event.rawX.toInt()
-                    val dy = event.rawY.toInt() - startY
-                    params.x = paramX + dx
-                    params.y = paramY + dy
-                    windowManager?.updateViewLayout(view, params)
+                    val dx = (event.rawX - startRawX).toInt()
+                    val dy = (event.rawY - startRawY).toInt()
+                    if (!dragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        dragging = true
+                    }
+                    if (dragging) {
+                        val metrics = resources.displayMetrics
+                        val maxX = (metrics.widthPixels - panel.width).coerceAtLeast(0)
+                        val maxY = (metrics.heightPixels - panel.height).coerceAtLeast(0)
+                        params.x = (startParamX + dx).coerceIn(0, maxX)
+                        params.y = (startParamY + dy).coerceIn(0, maxY)
+                        windowManager?.updateViewLayout(panel, params)
+                    }
                     true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (dragging) {
+                        prefs.edit()
+                            .putBoolean(KEY_HAS_POS, true)
+                            .putInt(KEY_X, params.x)
+                            .putInt(KEY_Y, params.y)
+                            .apply()
+                    }
+                    dragging
                 }
                 else -> false
             }
         }
-
-        windowManager?.addView(view, params)
-        overlayView = view
     }
 
     private fun removeOverlay() {
@@ -173,6 +235,7 @@ class CaptureOverlayService : Service() {
             }
         }
         overlayView = null
+        layoutParams = null
         countView = null
         shotButton = null
         pauseButton = null

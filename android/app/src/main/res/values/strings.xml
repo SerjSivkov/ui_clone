@@ -6,4 +6,9 @@
         или другие app.
     </string>
     <string name="accessibility_service_label">UI Clone — отслеживание приложения</string>
+    <string name="overlay_drag">Переместить панель</string>
+    <string name="overlay_shot">Сделать кадр</string>
+    <string name="overlay_pause">Пауза</string>
+    <string name="overlay_resume">Продолжить</string>
+    <string name="overlay_stop">Стоп</string>
 </resources>

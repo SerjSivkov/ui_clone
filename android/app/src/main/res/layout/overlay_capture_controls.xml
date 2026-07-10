@@ -6,63 +6,64 @@
     android:elevation="8dp"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingStart="12dp"
-    android:paddingTop="10dp"
-    android:paddingEnd="12dp"
-    android:paddingBottom="10dp">
+    android:paddingStart="6dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="6dp"
+    android:paddingBottom="6dp">
+
+    <ImageView
+        android:id="@+id/overlay_drag"
+        android:layout_width="28dp"
+        android:layout_height="36dp"
+        android:contentDescription="@string/overlay_drag"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_overlay_drag" />
 
     <TextView
         android:id="@+id/overlay_count"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="10dp"
+        android:layout_marginStart="2dp"
+        android:layout_marginEnd="6dp"
+        android:minWidth="20dp"
+        android:gravity="center"
         android:text="0"
         android:textColor="#FFFFFF"
-        android:textSize="14sp"
+        android:textSize="13sp"
         android:textStyle="bold" />
 
-    <TextView
+    <ImageView
         android:id="@+id/overlay_shot"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="8dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginEnd="6dp"
         android:background="@drawable/overlay_shot_bg"
-        android:paddingStart="14dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="14dp"
-        android:paddingBottom="8dp"
-        android:text="+ кадр"
-        android:textColor="#FFFFFF"
-        android:textSize="14sp"
-        android:textStyle="bold"
+        android:contentDescription="@string/overlay_shot"
+        android:padding="8dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_overlay_shot"
         android:visibility="gone" />
 
-    <TextView
+    <ImageView
         android:id="@+id/overlay_pause"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="8dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginEnd="6dp"
         android:background="@drawable/overlay_pause_bg"
-        android:paddingStart="14dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="14dp"
-        android:paddingBottom="8dp"
-        android:text="Пауза"
-        android:textColor="#FFFFFF"
-        android:textSize="14sp"
-        android:textStyle="bold" />
+        android:contentDescription="@string/overlay_pause"
+        android:padding="8dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_overlay_pause" />
 
-    <TextView
+    <ImageView
         android:id="@+id/overlay_stop"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
         android:background="@drawable/overlay_stop_bg"
-        android:paddingStart="14dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="14dp"
-        android:paddingBottom="8dp"
-        android:text="Стоп"
-        android:textColor="#FFFFFF"
-        android:textSize="14sp"
-        android:textStyle="bold" />
+        android:contentDescription="@string/overlay_stop"
+        android:padding="8dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_overlay_stop" />
 </LinearLayout>
