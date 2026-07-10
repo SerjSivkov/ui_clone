@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../data/models/capture_session.dart';
+import '../about/about_screen.dart';
 import '../app_picker/app_picker_screen.dart';
 import '../capture/capture_controller.dart';
 import '../capture/capture_screen.dart';
@@ -44,6 +45,17 @@ class HomeScreen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.displayLarge,
                   ),
                   const Spacer(),
+                  IconButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const AboutScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.info_outline_rounded),
+                    tooltip: 'О приложении',
+                  ),
                   IconButton(
                     onPressed: () {
                       Navigator.of(context).push(

@@ -4,6 +4,11 @@ abstract final class AppConstants {
   static const String captureEventsChannel =
       'com.mobileway.ui_clone/capture_events';
 
+  static const String githubUrl = 'https://github.com/SerjSivkov/ui_clone';
+  static const String donateUrl = 'https://pay.cloudtips.ru/p/9cabf23f';
+  static const String licenseAsset = 'LICENSE';
+  static const String termsAsset = 'assets/legal/terms_of_use.txt';
+
   static const int defaultCaptureIntervalMs = 1500;
   /// Near-duplicate threshold (% MAD of 16×16 luma). Below → skip frame.
   static const double defaultSimilarityPercent = 2.5;

@@ -46,6 +46,11 @@ flutter build apk --debug
 Полная инструкция: **[docs/release-build.md](docs/release-build.md)**.
 
 ```bash
+# 1) Changelog → интерактивный тег (версия, commit, push, git tag)
+#    Stable / Beta / Alpha; тег на текущей ветке
+dart run release.dart
+
+# 2) Сборка APK / AAB
 chmod +x scripts/flutter_build_release.sh bin/ci/android_collect_artifacts.sh
 
 # (один раз) подпись: cp android/key.properties.example android/key.properties
@@ -55,6 +60,7 @@ chmod +x scripts/flutter_build_release.sh bin/ci/android_collect_artifacts.sh
 # или split: ./scripts/flutter_build_release.sh android-split
 # или Play:  ./scripts/flutter_build_release.sh appbundle
 
+# 3) Артефакты в dist/android/ (метка = тег, напр. v1.0.0)
 export APP_RELEASE_LABEL="v1.0.0"
 bin/ci/android_collect_artifacts.sh
 # → dist/android/UIClone-android-v1.0.0-*.apk
@@ -75,6 +81,7 @@ lib/
     capture/      статус сбора и превью
     result/       готовый промпт
     settings/     API / интервал / оверлей
+    about/        версия, лицензия, условия, GitHub, донат
 android/.../capture/   ScreenCaptureService (MediaProjection)
 android/.../overlay/   плавающая кнопка «Стоп»
 ```

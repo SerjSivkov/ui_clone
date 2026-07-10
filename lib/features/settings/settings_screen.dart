@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../about/about_screen.dart';
 import '../capture/capture_controller.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -263,6 +264,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   },
                   icon: const Icon(Icons.query_stats_outlined),
                   label: const Text('Статистика использования (запасной)'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AboutScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.info_outline_rounded),
+                  label: const Text('О приложении'),
                 ),
                 const SizedBox(height: 24),
                 FilledButton(

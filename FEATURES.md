@@ -24,6 +24,14 @@
   возвращается на передний план.
 - Экран прогресса в UI Clone с превью кадров и кнопкой остановки.
 
+## О приложении
+
+- Версия из `package_info` (version + build).
+- Лицензия MIT и условия эксплуатации (локальные тексты).
+- Лицензии открытых зависимостей (системная страница Flutter).
+- Ссылка на репозиторий: [github.com/SerjSivkov/ui_clone](https://github.com/SerjSivkov/ui_clone).
+- Кнопка «Пожертвовать» → [CloudTips](https://pay.cloudtips.ru/p/9cabf23f).
+
 ## AI-промпт
 
 - Отправка выборки скриншотов в OpenAI-совместимый `/chat/completions`

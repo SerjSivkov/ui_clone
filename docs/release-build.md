@@ -1,12 +1,13 @@
 # Локальная сборка релиза UI Clone
 
-Пошаговая инструкция: версия, подпись Android, APK / split / AAB и сбор артефактов
-в `dist/android/`.
+Пошаговая инструкция: версия и git-тег (`dart run release.dart`), подпись
+Android, APK / split / AAB и сбор артефактов в `dist/android/`.
 
 Связанные файлы:
 
 | Файл | Назначение |
 |------|------------|
+| `release.dart` | Интерактивный релиз: версия в `pubspec.yaml`, commit, push, тег |
 | `scripts/flutter_build_release.sh` | Release-сборка (`apk` / `android-split` / `appbundle` / `ios`) |
 | `bin/ci/android_collect_artifacts.sh` | Переименование APK в `dist/android/` |
 | `android/key.properties.example` | Шаблон подписи release |
@@ -34,23 +35,76 @@ flutter doctor
 
 ---
 
-## 1. Версия в pubspec.yaml
+## 1. Changelog и формат версии
 
-Формат: `version: X.Y.Z+BUILD` (например `1.0.0+1`).
+Формат в `pubspec.yaml`: `version: X.Y.Z+BUILD` (например `1.0.0+1`).
 
-- **X.Y.Z** — версия для пользователя
-- **+BUILD** — `versionCode` Android (увеличивайте при каждом релизе)
+- **X.Y.Z** — версия для пользователя (и для git-тега)
+- **+BUILD** — `versionCode` Android (увеличивается при каждом релизе)
 
-Перед релизом добавьте секцию в `CHANGELOG.md`:
+Перед релизом добавьте секцию в `CHANGELOG.md` (скрипт `release.dart` закоммитит
+его вместе с `pubspec.yaml`):
 
 ```markdown
-## 1.0.0
-- Feat: первый релиз — захват UI, оверлей/уведомление, промпт
+## 1.0.1
+- Feat: …
+```
+
+Номер `version:` обычно выставляет `dart run release.dart` (следующий раздел).
+Вручную править `pubspec.yaml` нужно только если идёте по варианту B.
+
+---
+
+## 2. Версия и git-тег (`dart run release.dart`)
+
+### Вариант A — интерактивный скрипт (рекомендуется)
+
+```bash
+cd /Users/serjsivkov/mobile_development_way/ui_clone
+# CHANGELOG.md уже обновлён под новый релиз
+dart run release.dart
+```
+
+Скрипт:
+
+1. Предлагает тип: **Stable** / **Beta** / **Alpha**
+2. Подсказывает следующую версию и build number по тегам и `pubspec.yaml`
+3. По подтверждению обновляет `version:` в `pubspec.yaml`
+4. Делает `git add pubspec.yaml CHANGELOG.md`, commit `release: <tag>`, push ветки
+5. Создаёт тег на **текущей ветке** и пушит его (`git push <remote> <tag>`)
+
+Если у ветки ещё нет upstream, выполнит `git push -u <remote> <ветка>`.
+
+Форматы тегов:
+
+| Тип | Пример тега |
+|-----|-------------|
+| Stable | `v1.0.1` |
+| Beta | `v1.0.1-beta.1` |
+| Alpha | `v1.0.1-alpha.1` |
+
+**Важно:** версия в теге (`1.0.1`) должна совпадать с `version:` в `pubspec.yaml` до знака `+`.
+
+После успешного тега соберите APK/AAB (разделы ниже) с
+`APP_RELEASE_LABEL` равным тегу, например `v1.0.1`.
+
+### Вариант B — вручную
+
+```bash
+# 1. Правка pubspec.yaml → version: 1.0.1+2
+# 2. Commit
+git add pubspec.yaml CHANGELOG.md
+git commit -m "release: v1.0.1"
+git push
+
+# 3. Тег и push
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
 ---
 
-## 2. Подпись Android (release)
+## 3. Подпись Android (release)
 
 ```bash
 cp android/key.properties.example android/key.properties
@@ -82,7 +136,7 @@ storeFile=app/keystore.jks
 
 ---
 
-## 3. Сборка
+## 4. Сборка
 
 ```bash
 chmod +x scripts/flutter_build_release.sh bin/ci/android_collect_artifacts.sh
@@ -91,7 +145,7 @@ chmod +x scripts/flutter_build_release.sh bin/ci/android_collect_artifacts.sh
 Скрипт сам делает `flutter pub get` и `build_runner` (codegen). Чтобы пропустить
 codegen: `SKIP_CODEGEN=1 ./scripts/flutter_build_release.sh apk`.
 
-### 3.1. Универсальный APK
+### 4.1. Универсальный APK
 
 ```bash
 ./scripts/flutter_build_release.sh apk
@@ -99,7 +153,7 @@ codegen: `SKIP_CODEGEN=1 ./scripts/flutter_build_release.sh apk`.
 
 Результат: `build/app/outputs/flutter-apk/app-release.apk`
 
-### 3.2. Split APK по архитектурам
+### 4.2. Split APK по архитектурам
 
 ```bash
 ./scripts/flutter_build_release.sh android-split \
@@ -112,7 +166,7 @@ codegen: `SKIP_CODEGEN=1 ./scripts/flutter_build_release.sh apk`.
 | `app-arm64-v8a-release.apk` | arm64-v8a |
 | `app-x86_64-release.apk` | x86_64 |
 
-### 3.3. App Bundle (Google Play)
+### 4.3. App Bundle (Google Play)
 
 ```bash
 ./scripts/flutter_build_release.sh appbundle
@@ -120,7 +174,7 @@ codegen: `SKIP_CODEGEN=1 ./scripts/flutter_build_release.sh apk`.
 
 Результат: `build/app/outputs/bundle/release/app-release.aab`
 
-### 3.4. iOS (unsigned, без codesign)
+### 4.4. iOS (unsigned, без codesign)
 
 ```bash
 ./scripts/flutter_build_release.sh ios
@@ -130,7 +184,7 @@ codegen: `SKIP_CODEGEN=1 ./scripts/flutter_build_release.sh apk`.
 
 ---
 
-## 4. Сбор артефактов в dist/
+## 5. Сбор артефактов в dist/
 
 ```bash
 export APP_RELEASE_LABEL="v1.0.0"
@@ -163,7 +217,7 @@ ls -la dist/android/
 
 ---
 
-## 5. Установка на устройство
+## 6. Установка на устройство
 
 ```bash
 adb install -r dist/android/UIClone-android-v1.0.0-arm64-v8a.apk
@@ -175,10 +229,10 @@ adb install -r build/app/outputs/flutter-apk/app-release.apk
 
 ---
 
-## 6. Чеклист релиза
+## 7. Чеклист релиза
 
-1. Обновить `CHANGELOG.md` и `version:` в `pubspec.yaml`
-2. (Опционально) `git tag vX.Y.Z` и push
+1. Обновить `CHANGELOG.md`
+2. `dart run release.dart` (версия, commit, push, тег) — или вручную по варианту B
 3. Настроить `android/key.properties` + keystore
 4. `./scripts/flutter_build_release.sh apk` (+ при необходимости `android-split` / `appbundle`)
 5. `APP_RELEASE_LABEL=vX.Y.Z bin/ci/android_collect_artifacts.sh`
@@ -195,3 +249,4 @@ adb install -r build/app/outputs/flutter-apk/app-release.apk
 | `No *-release*.apk` | Сборка ушла в debug — не передавайте `--debug` |
 | Ошибка codegen | `dart run build_runner build --delete-conflicting-outputs` вручную |
 | APK не ставится | `adb uninstall com.mobileway.ui_clone` и поставить снова (другая подпись) |
+| `release.dart` не находит version | В `pubspec.yaml` должна быть строка `version: X.Y.Z+N` |

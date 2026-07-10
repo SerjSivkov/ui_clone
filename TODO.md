@@ -102,8 +102,9 @@
 - [ ] CI: `flutter analyze` + `flutter test` (GitHub Actions).
 - [ ] Виджет-тесты: home, settings, result (мок platform channel).
 - [ ] Fake `CapturePlatformService` для тестов без Android.
-- [x] Скрипты релизной сборки APK/AAB (`scripts/flutter_build_release.sh`,
-      `bin/ci/android_collect_artifacts.sh`, `docs/release-build.md`).
+- [x] Скрипты релизной сборки APK/AAB (`release.dart`,
+      `scripts/flutter_build_release.sh`, `bin/ci/android_collect_artifacts.sh`,
+      `docs/release-build.md`).
 - [ ] Обновить `FEATURES.md` / `README.md` при закрытии крупных пунктов.
 - [ ] Убрать/заменить pin-предупреждения AGP 9 / Built-in Kotlin у плагинов.
 
