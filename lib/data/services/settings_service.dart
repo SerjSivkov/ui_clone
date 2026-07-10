@@ -2,6 +2,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../ai_providers.dart';
 import '../prompt_templates.dart';
 
 class SettingsService {
@@ -28,8 +29,12 @@ class SettingsService {
 
   Future<String> getBaseUrl() async {
     final prefs = await _prefsFuture;
-    return prefs.getString(AppConstants.prefsBaseUrl) ??
-        AppConstants.defaultOpenAiBaseUrl;
+    final stored = prefs.getString(AppConstants.prefsBaseUrl);
+    if (stored != null && stored.trim().isNotEmpty) {
+      return stored.trim();
+    }
+    final provider = await getAiProviderId();
+    return AiProviders.byId(provider).defaultBaseUrl;
   }
 
   Future<void> setBaseUrl(String value) async {
@@ -39,13 +44,34 @@ class SettingsService {
 
   Future<String> getModel() async {
     final prefs = await _prefsFuture;
-    return prefs.getString(AppConstants.prefsModel) ??
-        AppConstants.defaultVisionModel;
+    final stored = prefs.getString(AppConstants.prefsModel);
+    if (stored != null && stored.trim().isNotEmpty) {
+      return stored.trim();
+    }
+    final provider = await getAiProviderId();
+    return AiProviders.byId(provider).defaultModel;
   }
 
   Future<void> setModel(String value) async {
     final prefs = await _prefsFuture;
     await prefs.setString(AppConstants.prefsModel, value.trim());
+  }
+
+  Future<String> getAiProviderId() async {
+    final prefs = await _prefsFuture;
+    final value = prefs.getString(AppConstants.prefsAiProviderId);
+    if (value != null && AiProviders.isKnownId(value)) {
+      return value;
+    }
+    return AppConstants.defaultAiProviderId;
+  }
+
+  Future<void> setAiProviderId(String value) async {
+    final prefs = await _prefsFuture;
+    final id = AiProviders.isKnownId(value)
+        ? value
+        : AppConstants.defaultAiProviderId;
+    await prefs.setString(AppConstants.prefsAiProviderId, id);
   }
 
   Future<int> getCaptureIntervalMs() async {

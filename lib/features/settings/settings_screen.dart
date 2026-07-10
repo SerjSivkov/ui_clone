@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/ai_providers.dart';
 import '../../data/prompt_templates.dart';
 import '../about/about_screen.dart';
 import '../capture/capture_controller.dart';
@@ -24,8 +25,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _captureMode = AppConstants.defaultCaptureMode;
   double _maxSessionMin = AppConstants.defaultMaxSessionSec / 60;
   String _promptTemplateId = AppConstants.defaultPromptTemplateId;
+  String _aiProviderId = AppConstants.defaultAiProviderId;
   bool _loading = true;
   bool _obscure = true;
+
+  AiProviderPreset get _provider => AiProviders.byId(_aiProviderId);
 
   @override
   void initState() {
@@ -36,6 +40,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _load() async {
     final settings = ref.read(settingsServiceProvider);
     final key = await settings.getApiKey();
+    final providerId = await settings.getAiProviderId();
     final base = await settings.getBaseUrl();
     final model = await settings.getModel();
     final interval = await settings.getCaptureIntervalMs();
@@ -47,6 +52,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!mounted) return;
     setState(() {
       _apiKeyCtrl.text = key ?? '';
+      _aiProviderId = providerId;
       _baseUrlCtrl.text = base;
       _modelCtrl.text = model;
       _intervalSec = interval / 1000;
@@ -62,6 +68,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _save() async {
     final settings = ref.read(settingsServiceProvider);
     await settings.setApiKey(_apiKeyCtrl.text);
+    await settings.setAiProviderId(_aiProviderId);
     await settings.setBaseUrl(_baseUrlCtrl.text);
     await settings.setModel(_modelCtrl.text);
     await settings.setCaptureIntervalMs((_intervalSec * 1000).round());
@@ -74,6 +81,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Сохранено')),
     );
+  }
+
+  void _onProviderChanged(String? id) {
+    if (id == null || id == _aiProviderId) return;
+    final preset = AiProviders.byId(id);
+    setState(() {
+      _aiProviderId = id;
+      _baseUrlCtrl.text = preset.defaultBaseUrl;
+      _modelCtrl.text = preset.defaultModel;
+    });
   }
 
   bool get _promptDirty {
@@ -129,6 +146,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = _provider;
     return Scaffold(
       appBar: AppBar(title: const Text('Настройки')),
       body: _loading
@@ -142,10 +160,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'OpenAI-совместимый endpoint с vision-моделью. '
-                  'Без ключа приложение всё равно соберёт шаблон промпта '
-                  'по скриншотам.',
+                  'Выберите провайдера vision-модели. Без ключа приложение '
+                  'соберёт офлайн-шаблон промпта по скриншотам.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.slate,
+                      ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  // ignore: deprecated_member_use
+                  value: _aiProviderId,
+                  decoration: const InputDecoration(
+                    labelText: 'Провайдер',
+                  ),
+                  items: [
+                    for (final p in AiProviders.all)
+                      DropdownMenuItem(
+                        value: AiProviders.idString(p.id),
+                        child: Text(p.title),
+                      ),
+                  ],
+                  onChanged: _onProviderChanged,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  provider.hint,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppColors.slate,
                       ),
                 ),
@@ -169,20 +209,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _baseUrlCtrl,
+                  enabled: provider.baseUrlEditable,
                   keyboardType: TextInputType.url,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Base URL',
-                    hintText: 'https://api.openai.com/v1',
+                    hintText: provider.defaultBaseUrl,
+                    helperText: provider.baseUrlEditable
+                        ? (provider.id == AiProviderId.anthropic
+                            ? 'По умолчанию api.anthropic.com; можно указать прокси'
+                            : 'Для OpenAI-compatible / Anthropic можно указать свой endpoint')
+                        : 'URL задаётся провайдером',
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _modelCtrl,
                   textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Модель',
-                    hintText: 'gpt-4o-mini',
+                    hintText: provider.defaultModel,
                   ),
                 ),
                 const SizedBox(height: 28),

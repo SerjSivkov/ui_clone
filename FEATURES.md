@@ -34,8 +34,8 @@
 
 ## AI-промпт
 
-- Отправка выборки скриншотов в OpenAI-совместимый `/chat/completions`
-  с vision-моделью.
+- Отправка выборки скриншотов провайдеру vision (OpenAI / Anthropic /
+  Gemini / OpenAI-compatible `/chat/completions`).
 - Ответ: JSON (палитра HEX, экраны, компоненты) + поле `markdown` с
   человекочитаемым промптом; на экране результата вкладки Markdown / JSON.
 - Промпт описывает: палитру, типографику, навигацию, layout экранов,
@@ -45,8 +45,9 @@
 
 ## Настройки
 
+- Провайдер vision: OpenAI · Anthropic · Gemini · OpenAI-compatible.
 - API key (secure storage).
-- Base URL и имя модели.
+- Base URL (редактируется для Anthropic и OpenAI-compatible) и имя модели.
 - Системный промпт: шаблоны Flutter / React Native / Figma / общий UX,
   редактирование текста, сброс к шаблону; плейсхолдеры `{{app}}`,
   `{{package}}`, `{{count}}`.

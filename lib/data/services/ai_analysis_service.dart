@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/app_constants.dart';
+import '../ai_providers.dart';
 import '../models/ui_clone_analysis.dart';
 import '../prompt_templates.dart';
 import 'analysis_response_parser.dart';
@@ -45,7 +46,8 @@ class AiAnalysisService {
       throw StateError('Нет скриншотов для анализа');
     }
 
-    final baseUrl = await settings.getBaseUrl();
+    final providerId = AiProviders.parseId(await settings.getAiProviderId());
+    final baseUrl = (await settings.getBaseUrl()).replaceAll(RegExp(r'/$'), '');
     final model = await settings.getModel();
     final promptBody = await settings.getSystemPrompt();
     final instruction = PromptTemplates.apply(
@@ -54,54 +56,42 @@ class AiAnalysisService {
       package: targetPackage,
       count: selected.length,
     );
-    final content = <Map<String, dynamic>>[
-      {
-        'type': 'text',
-        'text': '$instruction${AnalysisResponseParser.responseFormatInstruction}',
-      },
-    ];
+    final textPrompt =
+        '$instruction${AnalysisResponseParser.responseFormatInstruction}';
 
+    final imagesB64 = <String>[];
     for (final path in selected) {
       final bytes = await File(path).readAsBytes();
       final compressed = await compute(_compressJpegBytes, bytes);
-      final b64 = base64Encode(compressed);
-      content.add({
-        'type': 'image_url',
-        'image_url': {
-          'url': 'data:image/jpeg;base64,$b64',
-          'detail': 'low',
-        },
-      });
+      imagesB64.add(base64Encode(compressed));
     }
 
     try {
-      final response = await _dio.post<Map<String, dynamic>>(
-        '${baseUrl.replaceAll(RegExp(r'/$'), '')}/chat/completions',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $apiKey',
-            'Content-Type': 'application/json',
-          },
-          receiveTimeout: const Duration(minutes: 3),
-          sendTimeout: const Duration(minutes: 2),
-        ),
-        data: {
-          'model': model,
-          'temperature': 0.35,
-          'messages': [
-            {
-              'role': 'user',
-              'content': content,
-            },
-          ],
-        },
-      );
-
-      final choices = response.data?['choices'] as List<dynamic>?;
-      final message = choices?.firstOrNull as Map<String, dynamic>?;
-      final text = (message?['message'] as Map<String, dynamic>?)?['content']
-          as String?;
-      if (text == null || text.trim().isEmpty) {
+      final text = switch (providerId) {
+        AiProviderId.anthropic => await _callAnthropic(
+            baseUrl: baseUrl,
+            apiKey: apiKey,
+            model: model,
+            textPrompt: textPrompt,
+            imagesB64: imagesB64,
+          ),
+        AiProviderId.gemini => await _callGemini(
+            baseUrl: baseUrl,
+            apiKey: apiKey,
+            model: model,
+            textPrompt: textPrompt,
+            imagesB64: imagesB64,
+          ),
+        AiProviderId.openai || AiProviderId.openaiCompatible =>
+          await _callOpenAiCompatible(
+            baseUrl: baseUrl,
+            apiKey: apiKey,
+            model: model,
+            textPrompt: textPrompt,
+            imagesB64: imagesB64,
+          ),
+      };
+      if (text.trim().isEmpty) {
         throw StateError('Пустой ответ модели');
       }
       return AnalysisResponseParser.parse(text);
@@ -117,6 +107,157 @@ class AiAnalysisService {
         ),
       );
     }
+  }
+
+  Future<String> _callOpenAiCompatible({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String textPrompt,
+    required List<String> imagesB64,
+  }) async {
+    final content = <Map<String, dynamic>>[
+      {'type': 'text', 'text': textPrompt},
+      for (final b64 in imagesB64)
+        {
+          'type': 'image_url',
+          'image_url': {
+            'url': 'data:image/jpeg;base64,$b64',
+            'detail': 'low',
+          },
+        },
+    ];
+
+    final response = await _dio.post<Map<String, dynamic>>(
+      '$baseUrl/chat/completions',
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+          'Content-Type': 'application/json',
+        },
+        receiveTimeout: const Duration(minutes: 3),
+        sendTimeout: const Duration(minutes: 2),
+      ),
+      data: {
+        'model': model,
+        'temperature': 0.35,
+        'messages': [
+          {'role': 'user', 'content': content},
+        ],
+      },
+    );
+
+    final choices = response.data?['choices'] as List<dynamic>?;
+    final message = choices?.firstOrNull as Map<String, dynamic>?;
+    return (message?['message'] as Map<String, dynamic>?)?['content']
+            as String? ??
+        '';
+  }
+
+  Future<String> _callAnthropic({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String textPrompt,
+    required List<String> imagesB64,
+  }) async {
+    final content = <Map<String, dynamic>>[
+      {'type': 'text', 'text': textPrompt},
+      for (final b64 in imagesB64)
+        {
+          'type': 'image',
+          'source': {
+            'type': 'base64',
+            'media_type': 'image/jpeg',
+            'data': b64,
+          },
+        },
+    ];
+
+    final root = baseUrl.contains('/v1') ? baseUrl : '$baseUrl/v1';
+    final response = await _dio.post<Map<String, dynamic>>(
+      '$root/messages',
+      options: Options(
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+        receiveTimeout: const Duration(minutes: 3),
+        sendTimeout: const Duration(minutes: 2),
+      ),
+      data: {
+        'model': model,
+        'max_tokens': 8192,
+        'temperature': 0.35,
+        'messages': [
+          {'role': 'user', 'content': content},
+        ],
+      },
+    );
+
+    final blocks = response.data?['content'] as List<dynamic>?;
+    if (blocks == null || blocks.isEmpty) return '';
+    final texts = <String>[];
+    for (final block in blocks) {
+      if (block is Map<String, dynamic> && block['type'] == 'text') {
+        final t = block['text'] as String?;
+        if (t != null && t.isNotEmpty) texts.add(t);
+      }
+    }
+    return texts.join('\n');
+  }
+
+  Future<String> _callGemini({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String textPrompt,
+    required List<String> imagesB64,
+  }) async {
+    final parts = <Map<String, dynamic>>[
+      {'text': textPrompt},
+      for (final b64 in imagesB64)
+        {
+          'inline_data': {
+            'mime_type': 'image/jpeg',
+            'data': b64,
+          },
+        },
+    ];
+
+    final url =
+        '$baseUrl/models/$model:generateContent?key=${Uri.encodeQueryComponent(apiKey)}';
+    final response = await _dio.post<Map<String, dynamic>>(
+      url,
+      options: Options(
+        headers: {'Content-Type': 'application/json'},
+        receiveTimeout: const Duration(minutes: 3),
+        sendTimeout: const Duration(minutes: 2),
+      ),
+      data: {
+        'contents': [
+          {'role': 'user', 'parts': parts},
+        ],
+        'generationConfig': {
+          'temperature': 0.35,
+        },
+      },
+    );
+
+    final candidates = response.data?['candidates'] as List<dynamic>?;
+    final first = candidates?.firstOrNull as Map<String, dynamic>?;
+    final content = first?['content'] as Map<String, dynamic>?;
+    final outParts = content?['parts'] as List<dynamic>?;
+    if (outParts == null || outParts.isEmpty) return '';
+    final texts = <String>[];
+    for (final part in outParts) {
+      if (part is Map<String, dynamic>) {
+        final t = part['text'] as String?;
+        if (t != null && t.isNotEmpty) texts.add(t);
+      }
+    }
+    return texts.join('\n');
   }
 
   List<String> _pickRepresentative(List<String> paths) {
@@ -176,12 +317,8 @@ ${targetPackage != null ? '(`$targetPackage`)' : ''}.
 }
 
 Uint8List _compressJpegBytes(Uint8List bytes) {
-  // Keep payload small for vision APIs; native capture already saves JPEG.
-  // If the file is already modest, pass through.
   if (bytes.lengthInBytes <= 350 * 1024) {
     return bytes;
   }
-  // Without image codec in isolate, truncate is unsafe — return original.
-  // Compression is handled on Android capture side (JPEG quality).
   return bytes;
 }

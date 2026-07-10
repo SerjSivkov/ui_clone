@@ -10,6 +10,9 @@
   React Native / Figma / общий UX, плейсхолдеры {{app}}/{{package}}/{{count}}.
 - Feat: структурированный ответ vision (JSON: палитра HEX, экраны,
   компоненты) + markdown; вкладки на экране результата.
+- Feat: выбор vision-провайдера — OpenAI, Anthropic, Gemini,
+  OpenAI-compatible (свой Base URL); для Anthropic Base URL тоже
+  редактируемый (прокси).
 
 ## 1.0.0
 
