@@ -20,6 +20,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
@@ -48,10 +49,14 @@ class ScreenCaptureService : Service() {
         const val EXTRA_SIMILARITY_PERCENT = "similarityPercent"
         /** timer | manual | both */
         const val EXTRA_CAPTURE_MODE = "captureMode"
+        const val EXTRA_MAX_DURATION_MS = "maxDurationMs"
+        const val EXTRA_WARN_BEFORE_MS = "warnBeforeMs"
 
         private const val CHANNEL_ID = "ui_clone_capture"
         private const val NOTIFICATION_ID = 7101
         private const val MAX_SHOTS = 40
+        private const val DEFAULT_MAX_DURATION_MS = 300_000L
+        private const val DEFAULT_WARN_BEFORE_MS = 30_000L
 
         @Volatile
         private var instance: ScreenCaptureService? = null
@@ -108,12 +113,18 @@ class ScreenCaptureService : Service() {
     private var handlerThread: HandlerThread? = null
     private var handler: Handler? = null
     private var captureRunnable: Runnable? = null
+    private var sessionTickRunnable: Runnable? = null
 
     private var sessionId: String = ""
     private var targetLabel: String? = null
     private var intervalMs: Long = 1500L
     /** timer | manual | both */
     private var captureMode: String = "timer"
+    private var maxDurationMs: Long = DEFAULT_MAX_DURATION_MS
+    private var warnBeforeMs: Long = DEFAULT_WARN_BEFORE_MS
+    private var sessionDeadlineElapsed: Long = 0L
+    private var pauseStartedElapsed: Long = 0L
+    private var timeWarningEmitted = false
     private var width = 0
     private var height = 0
     private var density = 0
@@ -192,6 +203,12 @@ class ScreenCaptureService : Service() {
             "both" -> "both"
             else -> "timer"
         }
+        maxDurationMs = intent
+            .getLongExtra(EXTRA_MAX_DURATION_MS, DEFAULT_MAX_DURATION_MS)
+            .coerceIn(60_000L, 900_000L)
+        warnBeforeMs = intent
+            .getLongExtra(EXTRA_WARN_BEFORE_MS, DEFAULT_WARN_BEFORE_MS)
+            .coerceIn(5_000L, maxDurationMs / 2)
         val similarityPercent = intent
             .getFloatExtra(EXTRA_SIMILARITY_PERCENT, FrameSimilarityGate.DEFAULT_MAX_DIFF_PERCENT)
             .coerceIn(0.5f, 15f)
@@ -238,6 +255,8 @@ class ScreenCaptureService : Service() {
 
         isCapturing.set(true)
         isPaused.set(false)
+        timeWarningEmitted = false
+        sessionDeadlineElapsed = SystemClock.elapsedRealtime() + maxDurationMs
         refreshChrome(0)
         CaptureEventBus.emit(
             mapOf(
@@ -245,10 +264,13 @@ class ScreenCaptureService : Service() {
                 "sessionId" to sessionId,
                 "targetLabel" to targetLabel,
                 "captureMode" to captureMode,
+                "remainingSec" to (maxDurationMs / 1000L).toInt(),
+                "maxDurationSec" to (maxDurationMs / 1000L).toInt(),
             ),
         )
 
         startTimerLoop(initialDelayMs = 600L)
+        startSessionClock()
     }
 
     private fun startTimerLoop(initialDelayMs: Long = intervalMs) {
@@ -267,8 +289,75 @@ class ScreenCaptureService : Service() {
         handler?.postDelayed(runnable, initialDelayMs)
     }
 
+    private fun startSessionClock() {
+        cancelSessionClock()
+        val tick = object : Runnable {
+            override fun run() {
+                if (!isCapturing.get()) return
+                if (isPaused.get()) {
+                    handler?.postDelayed(this, 1000L)
+                    return
+                }
+                val remainingMs =
+                    (sessionDeadlineElapsed - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                val remainingSec = (remainingMs / 1000L).toInt()
+                CaptureEventBus.emit(
+                    mapOf(
+                        "type" to "time_tick",
+                        "remainingSec" to remainingSec,
+                        "count" to collectedPaths.size,
+                    ),
+                )
+                if (remainingMs <= warnBeforeMs && !timeWarningEmitted) {
+                    timeWarningEmitted = true
+                    CaptureEventBus.emit(
+                        mapOf(
+                            "type" to "time_warning",
+                            "remainingSec" to remainingSec,
+                            "count" to collectedPaths.size,
+                        ),
+                    )
+                    refreshChrome(collectedPaths.size)
+                }
+                if (remainingMs <= 0L) {
+                    CaptureEventBus.emit(
+                        mapOf(
+                            "type" to "time_limit",
+                            "remainingSec" to 0,
+                            "count" to collectedPaths.size,
+                        ),
+                    )
+                    finalizeCapture(stopReason = "time_limit")
+                    stopSelf()
+                    return
+                }
+                if (remainingMs <= warnBeforeMs || remainingSec % 15 == 0) {
+                    refreshChrome(collectedPaths.size)
+                }
+                handler?.postDelayed(this, 1000L)
+            }
+        }
+        sessionTickRunnable = tick
+        handler?.post(tick)
+    }
+
+    private fun cancelSessionClock() {
+        sessionTickRunnable?.let { handler?.removeCallbacks(it) }
+        sessionTickRunnable = null
+    }
+
+    private fun remainingSecNow(): Int {
+        if (sessionDeadlineElapsed <= 0L) {
+            return (maxDurationMs / 1000L).toInt()
+        }
+        val remainingMs =
+            (sessionDeadlineElapsed - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        return (remainingMs / 1000L).toInt()
+    }
+
     private fun pauseCapture() {
         if (!isCapturing.get() || isPaused.getAndSet(true)) return
+        pauseStartedElapsed = SystemClock.elapsedRealtime()
         captureRunnable?.let { handler?.removeCallbacks(it) }
         refreshChrome(collectedPaths.size)
         CaptureEventBus.emit(
@@ -276,18 +365,25 @@ class ScreenCaptureService : Service() {
                 "type" to "paused",
                 "count" to collectedPaths.size,
                 "skipped" to similarityGate.skippedCount(),
+                "remainingSec" to remainingSecNow(),
             ),
         )
     }
 
     private fun resumeCapture() {
         if (!isCapturing.get() || !isPaused.getAndSet(false)) return
+        if (pauseStartedElapsed > 0L) {
+            val pausedFor = SystemClock.elapsedRealtime() - pauseStartedElapsed
+            sessionDeadlineElapsed += pausedFor
+            pauseStartedElapsed = 0L
+        }
         refreshChrome(collectedPaths.size)
         CaptureEventBus.emit(
             mapOf(
                 "type" to "resumed",
                 "count" to collectedPaths.size,
                 "skipped" to similarityGate.skippedCount(),
+                "remainingSec" to remainingSecNow(),
             ),
         )
         startTimerLoop(initialDelayMs = 300L)
@@ -376,11 +472,12 @@ class ScreenCaptureService : Service() {
         }
     }
 
-    private fun finalizeCapture() {
+    private fun finalizeCapture(stopReason: String = "user") {
         if (!isCapturing.getAndSet(false) && mediaProjection == null) {
             return
         }
         isPaused.set(false)
+        cancelSessionClock()
         captureRunnable?.let { handler?.removeCallbacks(it) }
         captureRunnable = null
 
@@ -407,6 +504,7 @@ class ScreenCaptureService : Service() {
             mapOf(
                 "type" to "stopped",
                 "paths" to collectedPaths.toList(),
+                "reason" to stopReason,
             ),
         )
 
@@ -472,13 +570,16 @@ class ScreenCaptureService : Service() {
         )
 
         val paused = isPaused.get()
+        val remainingSec = remainingSecNow()
+        val nearLimit = remainingSec <= (warnBeforeMs / 1000L).toInt()
         val label = targetLabel?.let { " · $it" } ?: ""
         val skipped = similarityGate.skippedCount()
         val skippedPart = if (skipped > 0) " · дублей пропущено: $skipped" else ""
-        val statusTitle = if (paused) {
-            "UI Clone: пауза$label"
-        } else {
-            "UI Clone: идёт сбор$label"
+        val timePart = " · осталось ${formatRemaining(remainingSec)}"
+        val statusTitle = when {
+            paused -> "UI Clone: пауза$label"
+            nearLimit -> "UI Clone: скоро стоп$label"
+            else -> "UI Clone: идёт сбор$label"
         }
         val modeHint = when {
             paused -> " · «Далее» или Стоп"
@@ -489,7 +590,7 @@ class ScreenCaptureService : Service() {
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(statusTitle)
-            .setContentText("Скриншотов: $count$skippedPart$modeHint")
+            .setContentText("Скриншотов: $count$skippedPart$timePart$modeHint")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(openPending)
             .setOngoing(true)
@@ -520,6 +621,12 @@ class ScreenCaptureService : Service() {
         builder.addAction(0, if (paused) "Далее" else "Пауза", pausePending)
         builder.addAction(0, "Стоп", stopPending)
         return builder.build()
+    }
+
+    private fun formatRemaining(totalSec: Int): String {
+        val m = totalSec / 60
+        val s = totalSec % 60
+        return "%d:%02d".format(m, s)
     }
 
     private fun updateNotification(count: Int) {

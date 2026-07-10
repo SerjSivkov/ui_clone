@@ -23,6 +23,10 @@ abstract class CaptureSession with _$CaptureSession {
     @Default(CaptureStatus.idle) CaptureStatus status,
     @Default([]) List<String> screenshotPaths,
     @Default(0) int skippedDuplicates,
+    /// Seconds left before hard auto-stop; null until session starts.
+    int? remainingSec,
+    /// True after native time_warning (near limit).
+    @Default(false) bool timeLimitWarning,
     String? prompt,
     String? errorMessage,
     DateTime? startedAt,

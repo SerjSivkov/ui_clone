@@ -77,6 +77,8 @@ class CapturePlatformService {
     int intervalMs = AppConstants.defaultCaptureIntervalMs,
     double similarityPercent = AppConstants.defaultSimilarityPercent,
     String captureMode = AppConstants.defaultCaptureMode,
+    int maxDurationMs = AppConstants.defaultMaxSessionSec * 1000,
+    int warnBeforeMs = AppConstants.defaultWarnBeforeSec * 1000,
   }) async {
     await _method.invokeMethod<void>('startCapture', {
       'sessionId': sessionId,
@@ -85,6 +87,8 @@ class CapturePlatformService {
       'intervalMs': intervalMs,
       'similarityPercent': similarityPercent,
       'captureMode': captureMode,
+      'maxDurationMs': maxDurationMs,
+      'warnBeforeMs': warnBeforeMs,
     });
   }
 
@@ -122,6 +126,7 @@ sealed class CaptureEvent {
   factory CaptureEvent.started({
     required String sessionId,
     required String? targetLabel,
+    int? remainingSec,
   }) = CaptureStarted;
 
   factory CaptureEvent.screenshot({
@@ -145,8 +150,19 @@ sealed class CaptureEvent {
     required int skipped,
   }) = CaptureResumed;
 
+  factory CaptureEvent.timeTick({
+    required int remainingSec,
+  }) = CaptureTimeTick;
+
+  factory CaptureEvent.timeWarning({
+    required int remainingSec,
+  }) = CaptureTimeWarning;
+
+  factory CaptureEvent.timeLimit() = CaptureTimeLimit;
+
   factory CaptureEvent.stopped({
     required List<String> paths,
+    required String reason,
   }) = CaptureStopped;
 
   factory CaptureEvent.error(String message) = CaptureError;
@@ -158,6 +174,7 @@ sealed class CaptureEvent {
         return CaptureStarted(
           sessionId: map['sessionId'] as String? ?? '',
           targetLabel: map['targetLabel'] as String?,
+          remainingSec: (map['remainingSec'] as num?)?.toInt(),
         );
       case 'screenshot':
         return CaptureScreenshotTaken(
@@ -180,12 +197,25 @@ sealed class CaptureEvent {
           count: (map['count'] as num?)?.toInt() ?? 0,
           skipped: (map['skipped'] as num?)?.toInt() ?? 0,
         );
+      case 'time_tick':
+        return CaptureTimeTick(
+          remainingSec: (map['remainingSec'] as num?)?.toInt() ?? 0,
+        );
+      case 'time_warning':
+        return CaptureTimeWarning(
+          remainingSec: (map['remainingSec'] as num?)?.toInt() ?? 0,
+        );
+      case 'time_limit':
+        return CaptureTimeLimit();
       case 'stopped':
         final paths = (map['paths'] as List<dynamic>?)
                 ?.whereType<String>()
                 .toList(growable: false) ??
             const <String>[];
-        return CaptureStopped(paths: paths);
+        return CaptureStopped(
+          paths: paths,
+          reason: map['reason'] as String? ?? 'user',
+        );
       case 'error':
         return CaptureError(map['message'] as String? ?? 'Unknown error');
       default:
@@ -199,10 +229,12 @@ final class CaptureStarted extends CaptureEvent {
   const CaptureStarted({
     required this.sessionId,
     required this.targetLabel,
+    this.remainingSec,
   });
 
   final String sessionId;
   final String? targetLabel;
+  final int? remainingSec;
 }
 
 final class CaptureScreenshotTaken extends CaptureEvent {
@@ -247,10 +279,30 @@ final class CaptureResumed extends CaptureEvent {
   final int skipped;
 }
 
+final class CaptureTimeTick extends CaptureEvent {
+  const CaptureTimeTick({required this.remainingSec});
+
+  final int remainingSec;
+}
+
+final class CaptureTimeWarning extends CaptureEvent {
+  const CaptureTimeWarning({required this.remainingSec});
+
+  final int remainingSec;
+}
+
+final class CaptureTimeLimit extends CaptureEvent {
+  const CaptureTimeLimit();
+}
+
 final class CaptureStopped extends CaptureEvent {
-  const CaptureStopped({required this.paths});
+  const CaptureStopped({
+    required this.paths,
+    this.reason = 'user',
+  });
 
   final List<String> paths;
+  final String reason;
 }
 
 final class CaptureError extends CaptureEvent {

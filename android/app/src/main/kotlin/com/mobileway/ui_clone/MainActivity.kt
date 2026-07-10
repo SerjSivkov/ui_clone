@@ -175,6 +175,14 @@ class MainActivity : FlutterActivity() {
                 ScreenCaptureService.EXTRA_CAPTURE_MODE,
                 args["captureMode"] as? String ?: "timer",
             )
+            putExtra(
+                ScreenCaptureService.EXTRA_MAX_DURATION_MS,
+                (args["maxDurationMs"] as? Number)?.toLong() ?: 300_000L,
+            )
+            putExtra(
+                ScreenCaptureService.EXTRA_WARN_BEFORE_MS,
+                (args["warnBeforeMs"] as? Number)?.toLong() ?: 30_000L,
+            )
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

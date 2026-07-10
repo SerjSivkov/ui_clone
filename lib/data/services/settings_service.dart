@@ -87,4 +87,18 @@ class SettingsService {
     };
     await prefs.setString(AppConstants.prefsCaptureMode, normalized);
   }
+
+  Future<int> getMaxSessionSec() async {
+    final prefs = await _prefsFuture;
+    return prefs.getInt(AppConstants.prefsMaxSessionSec) ??
+        AppConstants.defaultMaxSessionSec;
+  }
+
+  Future<void> setMaxSessionSec(int value) async {
+    final prefs = await _prefsFuture;
+    await prefs.setInt(
+      AppConstants.prefsMaxSessionSec,
+      value.clamp(60, 900),
+    );
+  }
 }

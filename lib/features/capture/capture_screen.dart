@@ -127,9 +127,31 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     const SizedBox(height: 14),
                     Text(
                       'Скриншотов: $count'
-                      '${session.skippedDuplicates > 0 ? ' · дублей пропущено: ${session.skippedDuplicates}' : ''}',
+                      '${session.skippedDuplicates > 0 ? ' · дублей пропущено: ${session.skippedDuplicates}' : ''}'
+                      '${session.remainingSec != null ? ' · ${_formatRemaining(session.remainingSec!)}' : ''}',
                       style: Theme.of(context).textTheme.headlineMedium,
                     ),
+                    if (session.timeLimitWarning && showLiveControls) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF1E8),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.warn),
+                        ),
+                        child: Text(
+                          'Скоро автостоп'
+                          '${session.remainingSec != null ? ' через ${_formatRemaining(session.remainingSec!)}' : ''}. '
+                          'Остановите сбор или дождитесь лимита.',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: AppColors.warn,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Text(
                       isProcessing
@@ -282,5 +304,11 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       CaptureStatus.completed => 'Готово',
       CaptureStatus.failed => 'Ошибка',
     };
+  }
+
+  String _formatRemaining(int totalSec) {
+    final m = totalSec ~/ 60;
+    final s = totalSec % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
   }
 }

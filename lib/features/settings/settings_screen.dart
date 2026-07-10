@@ -19,6 +19,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   double _intervalSec = AppConstants.defaultCaptureIntervalMs / 1000;
   double _similarityPercent = AppConstants.defaultSimilarityPercent;
   String _captureMode = AppConstants.defaultCaptureMode;
+  double _maxSessionMin = AppConstants.defaultMaxSessionSec / 60;
   bool _loading = true;
   bool _obscure = true;
 
@@ -36,6 +37,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final interval = await settings.getCaptureIntervalMs();
     final similarity = await settings.getSimilarityPercent();
     final captureMode = await settings.getCaptureMode();
+    final maxSessionSec = await settings.getMaxSessionSec();
     if (!mounted) return;
     setState(() {
       _apiKeyCtrl.text = key ?? '';
@@ -44,6 +46,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _intervalSec = interval / 1000;
       _similarityPercent = similarity;
       _captureMode = captureMode;
+      _maxSessionMin = maxSessionSec / 60;
       _loading = false;
     });
   }
@@ -56,6 +59,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await settings.setCaptureIntervalMs((_intervalSec * 1000).round());
     await settings.setSimilarityPercent(_similarityPercent);
     await settings.setCaptureMode(_captureMode);
+    await settings.setMaxSessionSec((_maxSessionMin * 60).round());
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Сохранено')),
@@ -209,6 +213,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   divisions: 19,
                   label: '${_similarityPercent.toStringAsFixed(1)}%',
                   onChanged: (v) => setState(() => _similarityPercent = v),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Лимит сессии: ${_maxSessionMin.round()} мин',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                Text(
+                  'За ${AppConstants.defaultWarnBeforeSec} с до конца — '
+                  'предупреждение, затем автостоп. Пауза не тратит лимит.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.slate,
+                      ),
+                ),
+                Slider(
+                  value: _maxSessionMin,
+                  min: 1,
+                  max: 15,
+                  divisions: 14,
+                  label: '${_maxSessionMin.round()} мин',
+                  onChanged: (v) => setState(() => _maxSessionMin = v),
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(

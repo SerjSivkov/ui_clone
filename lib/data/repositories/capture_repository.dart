@@ -43,12 +43,14 @@ class CaptureRepository {
     final interval = await settings.getCaptureIntervalMs();
     final similarity = await settings.getSimilarityPercent();
     final captureMode = await settings.getCaptureMode();
+    final maxSessionSec = await settings.getMaxSessionSec();
     final session = CaptureSession(
       id: _uuid.v4(),
       targetPackage: target?.packageName,
       targetLabel: target?.label,
       status: CaptureStatus.requestingPermission,
       startedAt: DateTime.now(),
+      remainingSec: maxSessionSec,
     );
 
     await platform.startCapture(
@@ -58,6 +60,8 @@ class CaptureRepository {
       intervalMs: interval,
       similarityPercent: similarity,
       captureMode: captureMode,
+      maxDurationMs: maxSessionSec * 1000,
+      warnBeforeMs: AppConstants.defaultWarnBeforeSec * 1000,
     );
 
     if (target != null) {

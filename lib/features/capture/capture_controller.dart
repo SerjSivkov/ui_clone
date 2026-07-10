@@ -74,7 +74,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
   void _onEvent(CaptureEvent event) {
     if (_disposed) return;
     switch (event) {
-      case CaptureStarted(:final sessionId, :final targetLabel):
+      case CaptureStarted(:final sessionId, :final targetLabel, :final remainingSec):
         if (_captureClosed || _activeGeneration != _generation) return;
         if (state.status != CaptureStatus.requestingPermission &&
             state.status != CaptureStatus.capturing) {
@@ -84,6 +84,8 @@ class CaptureController extends StateNotifier<CaptureSession> {
           id: sessionId.isNotEmpty ? sessionId : state.id,
           targetLabel: targetLabel ?? state.targetLabel,
           status: CaptureStatus.capturing,
+          remainingSec: remainingSec ?? state.remainingSec,
+          timeLimitWarning: false,
         );
       case CaptureScreenshotTaken(:final path, :final count, :final skipped):
         if (_activeGeneration != _generation) return;
@@ -140,11 +142,32 @@ class CaptureController extends StateNotifier<CaptureSession> {
           status: CaptureStatus.capturing,
           skippedDuplicates: skipped,
         );
+      case CaptureTimeTick(:final remainingSec):
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed) return;
+        if (state.status != CaptureStatus.capturing &&
+            state.status != CaptureStatus.paused) {
+          return;
+        }
+        state = state.copyWith(remainingSec: remainingSec);
+      case CaptureTimeWarning(:final remainingSec):
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed) return;
+        state = state.copyWith(
+          remainingSec: remainingSec,
+          timeLimitWarning: true,
+        );
+      case CaptureTimeLimit():
+        // Native will also emit stopped; mark warning so UI shows reason.
+        if (_activeGeneration != _generation) return;
+        state = state.copyWith(
+          remainingSec: 0,
+          timeLimitWarning: true,
+        );
       case CaptureStopped(:final paths):
         if (_activeGeneration != _generation) return;
         if (_captureClosed) return;
-        // External stop (notification / overlay): same generation fence
-        // as the in-app Stop button.
+        // External stop (notification / overlay / time limit).
         _generation++;
         _activeGeneration = _generation;
         unawaited(_finishWithPaths(paths, generation: _generation));
@@ -174,6 +197,8 @@ class CaptureController extends StateNotifier<CaptureSession> {
       targetLabel: target?.label,
       startedAt: DateTime.now(),
       skippedDuplicates: 0,
+      remainingSec: null,
+      timeLimitWarning: false,
     );
 
     try {

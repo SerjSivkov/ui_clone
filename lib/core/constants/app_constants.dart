@@ -9,6 +9,10 @@ abstract final class AppConstants {
   static const double defaultSimilarityPercent = 2.5;
   /// timer | manual | both
   static const String defaultCaptureMode = 'timer';
+  /// Hard session limit (seconds). Auto-stop when reached.
+  static const int defaultMaxSessionSec = 300;
+  /// Warn this many seconds before auto-stop.
+  static const int defaultWarnBeforeSec = 30;
   static const int maxScreenshotsPerSession = 40;
   static const int maxImagesForAnalysis = 8;
 
@@ -21,4 +25,5 @@ abstract final class AppConstants {
   static const String prefsIntervalMs = 'capture_interval_ms';
   static const String prefsSimilarityPercent = 'capture_similarity_percent';
   static const String prefsCaptureMode = 'capture_mode';
+  static const String prefsMaxSessionSec = 'capture_max_session_sec';
 }
