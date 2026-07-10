@@ -74,7 +74,12 @@ class CaptureController extends StateNotifier<CaptureSession> {
   void _onEvent(CaptureEvent event) {
     if (_disposed) return;
     switch (event) {
-      case CaptureStarted(:final sessionId, :final targetLabel, :final remainingSec):
+      case CaptureStarted(
+          :final sessionId,
+          :final targetLabel,
+          :final remainingSec,
+          :final usageAccessGranted,
+        ):
         if (_captureClosed || _activeGeneration != _generation) return;
         if (state.status != CaptureStatus.requestingPermission &&
             state.status != CaptureStatus.capturing) {
@@ -87,6 +92,9 @@ class CaptureController extends StateNotifier<CaptureSession> {
           remainingSec: remainingSec ?? state.remainingSec,
           timeLimitWarning: false,
           ownAppInForeground: false,
+          usageAccessGranted: usageAccessGranted ?? state.usageAccessGranted,
+          targetMismatch: false,
+          currentForegroundLabel: null,
         );
       case CaptureScreenshotTaken(:final path, :final count, :final skipped):
         if (_activeGeneration != _generation) return;
@@ -111,6 +119,8 @@ class CaptureController extends StateNotifier<CaptureSession> {
         state = state.copyWith(
           screenshotPaths: paths,
           skippedDuplicates: skipped,
+          targetMismatch: false,
+          currentForegroundLabel: null,
         );
         log('Screenshot #$count → $path (skipped=$skipped)');
       case CaptureFrameSkipped(:final skipped):
@@ -173,6 +183,22 @@ class CaptureController extends StateNotifier<CaptureSession> {
         if (_activeGeneration != _generation) return;
         if (_captureClosed) return;
         state = state.copyWith(ownAppInForeground: true);
+      case CaptureTargetMismatch(:final currentLabel, :final trackingReady):
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed) return;
+        state = state.copyWith(
+          targetMismatch: true,
+          currentForegroundLabel: currentLabel,
+          ownAppInForeground: false,
+          usageAccessGranted: trackingReady ?? state.usageAccessGranted,
+        );
+      case CaptureTargetMatch():
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed) return;
+        state = state.copyWith(
+          targetMismatch: false,
+          currentForegroundLabel: null,
+        );
       case CaptureStopped(:final paths):
         if (_activeGeneration != _generation) return;
         if (_captureClosed) return;
@@ -209,6 +235,8 @@ class CaptureController extends StateNotifier<CaptureSession> {
       remainingSec: null,
       timeLimitWarning: false,
       ownAppInForeground: false,
+      usageAccessGranted: true,
+      targetMismatch: false,
     );
 
     try {
@@ -275,6 +303,22 @@ class CaptureController extends StateNotifier<CaptureSession> {
       await _repo.togglePauseCapture();
     } catch (e, st) {
       log('togglePause failed', error: e, stackTrace: st);
+    }
+  }
+
+  Future<void> requestUsageAccess() async {
+    try {
+      await _repo.requestUsageAccess();
+    } catch (e, st) {
+      log('requestUsageAccess failed', error: e, stackTrace: st);
+    }
+  }
+
+  Future<void> requestAccessibilityAccess() async {
+    try {
+      await _repo.requestAccessibilityAccess();
+    } catch (e, st) {
+      log('requestAccessibilityAccess failed', error: e, stackTrace: st);
     }
   }
 

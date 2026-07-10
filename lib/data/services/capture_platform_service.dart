@@ -70,6 +70,24 @@ class CapturePlatformService {
     await _method.invokeMethod<void>('requestOverlayPermission');
   }
 
+  Future<bool> hasUsageAccess() async {
+    final result = await _method.invokeMethod<bool>('hasUsageAccess');
+    return result ?? false;
+  }
+
+  Future<void> requestUsageAccess() async {
+    await _method.invokeMethod<void>('requestUsageAccess');
+  }
+
+  Future<bool> hasAccessibilityAccess() async {
+    final result = await _method.invokeMethod<bool>('hasAccessibilityAccess');
+    return result ?? false;
+  }
+
+  Future<void> requestAccessibilityAccess() async {
+    await _method.invokeMethod<void>('requestAccessibilityAccess');
+  }
+
   Future<void> startCapture({
     required String sessionId,
     String? targetPackage,
@@ -127,6 +145,7 @@ sealed class CaptureEvent {
     required String sessionId,
     required String? targetLabel,
     int? remainingSec,
+    bool? usageAccessGranted,
   }) = CaptureStarted;
 
   factory CaptureEvent.screenshot({
@@ -169,6 +188,14 @@ sealed class CaptureEvent {
     required int ownAppSkipped,
   }) = CaptureOwnAppSkipped;
 
+  factory CaptureEvent.targetMismatch({
+    required String? currentPackage,
+    required String? currentLabel,
+    bool? trackingReady,
+  }) = CaptureTargetMismatch;
+
+  factory CaptureEvent.targetMatch() = CaptureTargetMatch;
+
   factory CaptureEvent.stopped({
     required List<String> paths,
     required String reason,
@@ -184,6 +211,7 @@ sealed class CaptureEvent {
           sessionId: map['sessionId'] as String? ?? '',
           targetLabel: map['targetLabel'] as String?,
           remainingSec: (map['remainingSec'] as num?)?.toInt(),
+          usageAccessGranted: map['usageAccessGranted'] as bool?,
         );
       case 'screenshot':
         return CaptureScreenshotTaken(
@@ -225,6 +253,14 @@ sealed class CaptureEvent {
         return CaptureOwnAppSkipped(
           ownAppSkipped: (map['ownAppSkipped'] as num?)?.toInt() ?? 0,
         );
+      case 'target_mismatch':
+        return CaptureTargetMismatch(
+          currentPackage: map['currentPackage'] as String?,
+          currentLabel: map['currentLabel'] as String?,
+          trackingReady: map['usageAccessGranted'] as bool?,
+        );
+      case 'target_match':
+        return CaptureTargetMatch();
       case 'stopped':
         final paths = (map['paths'] as List<dynamic>?)
                 ?.whereType<String>()
@@ -248,11 +284,13 @@ final class CaptureStarted extends CaptureEvent {
     required this.sessionId,
     required this.targetLabel,
     this.remainingSec,
+    this.usageAccessGranted,
   });
 
   final String sessionId;
   final String? targetLabel;
   final int? remainingSec;
+  final bool? usageAccessGranted;
 }
 
 final class CaptureScreenshotTaken extends CaptureEvent {
@@ -327,6 +365,22 @@ final class CaptureOwnAppSkipped extends CaptureEvent {
   const CaptureOwnAppSkipped({required this.ownAppSkipped});
 
   final int ownAppSkipped;
+}
+
+final class CaptureTargetMismatch extends CaptureEvent {
+  const CaptureTargetMismatch({
+    required this.currentPackage,
+    required this.currentLabel,
+    this.trackingReady,
+  });
+
+  final String? currentPackage;
+  final String? currentLabel;
+  final bool? trackingReady;
+}
+
+final class CaptureTargetMatch extends CaptureEvent {
+  const CaptureTargetMatch();
 }
 
 final class CaptureStopped extends CaptureEvent {

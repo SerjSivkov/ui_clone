@@ -18,7 +18,10 @@ mixin _$CaptureSession {
  String get id; String? get targetPackage; String? get targetLabel; CaptureStatus get status; List<String> get screenshotPaths; int get skippedDuplicates;/// Seconds left before hard auto-stop; null until session starts.
  int? get remainingSec;/// True after native time_warning (near limit).
  bool get timeLimitWarning;/// True while UI Clone itself is in the foreground (frames skipped).
- bool get ownAppInForeground; String? get prompt; String? get errorMessage; DateTime? get startedAt; DateTime? get finishedAt;
+ bool get ownAppInForeground;/// Usage access granted (needed to filter by target package).
+ bool get usageAccessGranted;/// True while another app (not the selected target) is in foreground.
+ bool get targetMismatch;/// Label of the app currently in foreground (UsageStats hint).
+ String? get currentForegroundLabel; String? get prompt; String? get errorMessage; DateTime? get startedAt; DateTime? get finishedAt;
 /// Create a copy of CaptureSession
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -31,16 +34,16 @@ $CaptureSessionCopyWith<CaptureSession> get copyWith => _$CaptureSessionCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is CaptureSession&&(identical(other.id, id) || other.id == id)&&(identical(other.targetPackage, targetPackage) || other.targetPackage == targetPackage)&&(identical(other.targetLabel, targetLabel) || other.targetLabel == targetLabel)&&(identical(other.status, status) || other.status == status)&&const DeepCollectionEquality().equals(other.screenshotPaths, screenshotPaths)&&(identical(other.skippedDuplicates, skippedDuplicates) || other.skippedDuplicates == skippedDuplicates)&&(identical(other.remainingSec, remainingSec) || other.remainingSec == remainingSec)&&(identical(other.timeLimitWarning, timeLimitWarning) || other.timeLimitWarning == timeLimitWarning)&&(identical(other.ownAppInForeground, ownAppInForeground) || other.ownAppInForeground == ownAppInForeground)&&(identical(other.prompt, prompt) || other.prompt == prompt)&&(identical(other.errorMessage, errorMessage) || other.errorMessage == errorMessage)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.finishedAt, finishedAt) || other.finishedAt == finishedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CaptureSession&&(identical(other.id, id) || other.id == id)&&(identical(other.targetPackage, targetPackage) || other.targetPackage == targetPackage)&&(identical(other.targetLabel, targetLabel) || other.targetLabel == targetLabel)&&(identical(other.status, status) || other.status == status)&&const DeepCollectionEquality().equals(other.screenshotPaths, screenshotPaths)&&(identical(other.skippedDuplicates, skippedDuplicates) || other.skippedDuplicates == skippedDuplicates)&&(identical(other.remainingSec, remainingSec) || other.remainingSec == remainingSec)&&(identical(other.timeLimitWarning, timeLimitWarning) || other.timeLimitWarning == timeLimitWarning)&&(identical(other.ownAppInForeground, ownAppInForeground) || other.ownAppInForeground == ownAppInForeground)&&(identical(other.usageAccessGranted, usageAccessGranted) || other.usageAccessGranted == usageAccessGranted)&&(identical(other.targetMismatch, targetMismatch) || other.targetMismatch == targetMismatch)&&(identical(other.currentForegroundLabel, currentForegroundLabel) || other.currentForegroundLabel == currentForegroundLabel)&&(identical(other.prompt, prompt) || other.prompt == prompt)&&(identical(other.errorMessage, errorMessage) || other.errorMessage == errorMessage)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.finishedAt, finishedAt) || other.finishedAt == finishedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,targetPackage,targetLabel,status,const DeepCollectionEquality().hash(screenshotPaths),skippedDuplicates,remainingSec,timeLimitWarning,ownAppInForeground,prompt,errorMessage,startedAt,finishedAt);
+int get hashCode => Object.hash(runtimeType,id,targetPackage,targetLabel,status,const DeepCollectionEquality().hash(screenshotPaths),skippedDuplicates,remainingSec,timeLimitWarning,ownAppInForeground,usageAccessGranted,targetMismatch,currentForegroundLabel,prompt,errorMessage,startedAt,finishedAt);
 
 @override
 String toString() {
-  return 'CaptureSession(id: $id, targetPackage: $targetPackage, targetLabel: $targetLabel, status: $status, screenshotPaths: $screenshotPaths, skippedDuplicates: $skippedDuplicates, remainingSec: $remainingSec, timeLimitWarning: $timeLimitWarning, ownAppInForeground: $ownAppInForeground, prompt: $prompt, errorMessage: $errorMessage, startedAt: $startedAt, finishedAt: $finishedAt)';
+  return 'CaptureSession(id: $id, targetPackage: $targetPackage, targetLabel: $targetLabel, status: $status, screenshotPaths: $screenshotPaths, skippedDuplicates: $skippedDuplicates, remainingSec: $remainingSec, timeLimitWarning: $timeLimitWarning, ownAppInForeground: $ownAppInForeground, usageAccessGranted: $usageAccessGranted, targetMismatch: $targetMismatch, currentForegroundLabel: $currentForegroundLabel, prompt: $prompt, errorMessage: $errorMessage, startedAt: $startedAt, finishedAt: $finishedAt)';
 }
 
 
@@ -51,7 +54,7 @@ abstract mixin class $CaptureSessionCopyWith<$Res>  {
   factory $CaptureSessionCopyWith(CaptureSession value, $Res Function(CaptureSession) _then) = _$CaptureSessionCopyWithImpl;
 @useResult
 $Res call({
- String id, String? targetPackage, String? targetLabel, CaptureStatus status, List<String> screenshotPaths, int skippedDuplicates, int? remainingSec, bool timeLimitWarning, bool ownAppInForeground, String? prompt, String? errorMessage, DateTime? startedAt, DateTime? finishedAt
+ String id, String? targetPackage, String? targetLabel, CaptureStatus status, List<String> screenshotPaths, int skippedDuplicates, int? remainingSec, bool timeLimitWarning, bool ownAppInForeground, bool usageAccessGranted, bool targetMismatch, String? currentForegroundLabel, String? prompt, String? errorMessage, DateTime? startedAt, DateTime? finishedAt
 });
 
 
@@ -68,7 +71,7 @@ class _$CaptureSessionCopyWithImpl<$Res>
 
 /// Create a copy of CaptureSession
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? targetPackage = freezed,Object? targetLabel = freezed,Object? status = null,Object? screenshotPaths = null,Object? skippedDuplicates = null,Object? remainingSec = freezed,Object? timeLimitWarning = null,Object? ownAppInForeground = null,Object? prompt = freezed,Object? errorMessage = freezed,Object? startedAt = freezed,Object? finishedAt = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? targetPackage = freezed,Object? targetLabel = freezed,Object? status = null,Object? screenshotPaths = null,Object? skippedDuplicates = null,Object? remainingSec = freezed,Object? timeLimitWarning = null,Object? ownAppInForeground = null,Object? usageAccessGranted = null,Object? targetMismatch = null,Object? currentForegroundLabel = freezed,Object? prompt = freezed,Object? errorMessage = freezed,Object? startedAt = freezed,Object? finishedAt = freezed,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,targetPackage: freezed == targetPackage ? _self.targetPackage : targetPackage // ignore: cast_nullable_to_non_nullable
@@ -79,7 +82,10 @@ as List<String>,skippedDuplicates: null == skippedDuplicates ? _self.skippedDupl
 as int,remainingSec: freezed == remainingSec ? _self.remainingSec : remainingSec // ignore: cast_nullable_to_non_nullable
 as int?,timeLimitWarning: null == timeLimitWarning ? _self.timeLimitWarning : timeLimitWarning // ignore: cast_nullable_to_non_nullable
 as bool,ownAppInForeground: null == ownAppInForeground ? _self.ownAppInForeground : ownAppInForeground // ignore: cast_nullable_to_non_nullable
-as bool,prompt: freezed == prompt ? _self.prompt : prompt // ignore: cast_nullable_to_non_nullable
+as bool,usageAccessGranted: null == usageAccessGranted ? _self.usageAccessGranted : usageAccessGranted // ignore: cast_nullable_to_non_nullable
+as bool,targetMismatch: null == targetMismatch ? _self.targetMismatch : targetMismatch // ignore: cast_nullable_to_non_nullable
+as bool,currentForegroundLabel: freezed == currentForegroundLabel ? _self.currentForegroundLabel : currentForegroundLabel // ignore: cast_nullable_to_non_nullable
+as String?,prompt: freezed == prompt ? _self.prompt : prompt // ignore: cast_nullable_to_non_nullable
 as String?,errorMessage: freezed == errorMessage ? _self.errorMessage : errorMessage // ignore: cast_nullable_to_non_nullable
 as String?,startedAt: freezed == startedAt ? _self.startedAt : startedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,finishedAt: freezed == finishedAt ? _self.finishedAt : finishedAt // ignore: cast_nullable_to_non_nullable
@@ -168,10 +174,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String? targetPackage,  String? targetLabel,  CaptureStatus status,  List<String> screenshotPaths,  int skippedDuplicates,  int? remainingSec,  bool timeLimitWarning,  bool ownAppInForeground,  String? prompt,  String? errorMessage,  DateTime? startedAt,  DateTime? finishedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String? targetPackage,  String? targetLabel,  CaptureStatus status,  List<String> screenshotPaths,  int skippedDuplicates,  int? remainingSec,  bool timeLimitWarning,  bool ownAppInForeground,  bool usageAccessGranted,  bool targetMismatch,  String? currentForegroundLabel,  String? prompt,  String? errorMessage,  DateTime? startedAt,  DateTime? finishedAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _CaptureSession() when $default != null:
-return $default(_that.id,_that.targetPackage,_that.targetLabel,_that.status,_that.screenshotPaths,_that.skippedDuplicates,_that.remainingSec,_that.timeLimitWarning,_that.ownAppInForeground,_that.prompt,_that.errorMessage,_that.startedAt,_that.finishedAt);case _:
+return $default(_that.id,_that.targetPackage,_that.targetLabel,_that.status,_that.screenshotPaths,_that.skippedDuplicates,_that.remainingSec,_that.timeLimitWarning,_that.ownAppInForeground,_that.usageAccessGranted,_that.targetMismatch,_that.currentForegroundLabel,_that.prompt,_that.errorMessage,_that.startedAt,_that.finishedAt);case _:
   return orElse();
 
 }
@@ -189,10 +195,10 @@ return $default(_that.id,_that.targetPackage,_that.targetLabel,_that.status,_tha
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String? targetPackage,  String? targetLabel,  CaptureStatus status,  List<String> screenshotPaths,  int skippedDuplicates,  int? remainingSec,  bool timeLimitWarning,  bool ownAppInForeground,  String? prompt,  String? errorMessage,  DateTime? startedAt,  DateTime? finishedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String? targetPackage,  String? targetLabel,  CaptureStatus status,  List<String> screenshotPaths,  int skippedDuplicates,  int? remainingSec,  bool timeLimitWarning,  bool ownAppInForeground,  bool usageAccessGranted,  bool targetMismatch,  String? currentForegroundLabel,  String? prompt,  String? errorMessage,  DateTime? startedAt,  DateTime? finishedAt)  $default,) {final _that = this;
 switch (_that) {
 case _CaptureSession():
-return $default(_that.id,_that.targetPackage,_that.targetLabel,_that.status,_that.screenshotPaths,_that.skippedDuplicates,_that.remainingSec,_that.timeLimitWarning,_that.ownAppInForeground,_that.prompt,_that.errorMessage,_that.startedAt,_that.finishedAt);case _:
+return $default(_that.id,_that.targetPackage,_that.targetLabel,_that.status,_that.screenshotPaths,_that.skippedDuplicates,_that.remainingSec,_that.timeLimitWarning,_that.ownAppInForeground,_that.usageAccessGranted,_that.targetMismatch,_that.currentForegroundLabel,_that.prompt,_that.errorMessage,_that.startedAt,_that.finishedAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -209,10 +215,10 @@ return $default(_that.id,_that.targetPackage,_that.targetLabel,_that.status,_tha
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String? targetPackage,  String? targetLabel,  CaptureStatus status,  List<String> screenshotPaths,  int skippedDuplicates,  int? remainingSec,  bool timeLimitWarning,  bool ownAppInForeground,  String? prompt,  String? errorMessage,  DateTime? startedAt,  DateTime? finishedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String? targetPackage,  String? targetLabel,  CaptureStatus status,  List<String> screenshotPaths,  int skippedDuplicates,  int? remainingSec,  bool timeLimitWarning,  bool ownAppInForeground,  bool usageAccessGranted,  bool targetMismatch,  String? currentForegroundLabel,  String? prompt,  String? errorMessage,  DateTime? startedAt,  DateTime? finishedAt)?  $default,) {final _that = this;
 switch (_that) {
 case _CaptureSession() when $default != null:
-return $default(_that.id,_that.targetPackage,_that.targetLabel,_that.status,_that.screenshotPaths,_that.skippedDuplicates,_that.remainingSec,_that.timeLimitWarning,_that.ownAppInForeground,_that.prompt,_that.errorMessage,_that.startedAt,_that.finishedAt);case _:
+return $default(_that.id,_that.targetPackage,_that.targetLabel,_that.status,_that.screenshotPaths,_that.skippedDuplicates,_that.remainingSec,_that.timeLimitWarning,_that.ownAppInForeground,_that.usageAccessGranted,_that.targetMismatch,_that.currentForegroundLabel,_that.prompt,_that.errorMessage,_that.startedAt,_that.finishedAt);case _:
   return null;
 
 }
@@ -224,7 +230,7 @@ return $default(_that.id,_that.targetPackage,_that.targetLabel,_that.status,_tha
 @JsonSerializable()
 
 class _CaptureSession implements CaptureSession {
-  const _CaptureSession({required this.id, this.targetPackage, this.targetLabel, this.status = CaptureStatus.idle, final  List<String> screenshotPaths = const [], this.skippedDuplicates = 0, this.remainingSec, this.timeLimitWarning = false, this.ownAppInForeground = false, this.prompt, this.errorMessage, this.startedAt, this.finishedAt}): _screenshotPaths = screenshotPaths;
+  const _CaptureSession({required this.id, this.targetPackage, this.targetLabel, this.status = CaptureStatus.idle, final  List<String> screenshotPaths = const [], this.skippedDuplicates = 0, this.remainingSec, this.timeLimitWarning = false, this.ownAppInForeground = false, this.usageAccessGranted = true, this.targetMismatch = false, this.currentForegroundLabel, this.prompt, this.errorMessage, this.startedAt, this.finishedAt}): _screenshotPaths = screenshotPaths;
   factory _CaptureSession.fromJson(Map<String, dynamic> json) => _$CaptureSessionFromJson(json);
 
 @override final  String id;
@@ -245,6 +251,12 @@ class _CaptureSession implements CaptureSession {
 @override@JsonKey() final  bool timeLimitWarning;
 /// True while UI Clone itself is in the foreground (frames skipped).
 @override@JsonKey() final  bool ownAppInForeground;
+/// Usage access granted (needed to filter by target package).
+@override@JsonKey() final  bool usageAccessGranted;
+/// True while another app (not the selected target) is in foreground.
+@override@JsonKey() final  bool targetMismatch;
+/// Label of the app currently in foreground (UsageStats hint).
+@override final  String? currentForegroundLabel;
 @override final  String? prompt;
 @override final  String? errorMessage;
 @override final  DateTime? startedAt;
@@ -263,16 +275,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _CaptureSession&&(identical(other.id, id) || other.id == id)&&(identical(other.targetPackage, targetPackage) || other.targetPackage == targetPackage)&&(identical(other.targetLabel, targetLabel) || other.targetLabel == targetLabel)&&(identical(other.status, status) || other.status == status)&&const DeepCollectionEquality().equals(other._screenshotPaths, _screenshotPaths)&&(identical(other.skippedDuplicates, skippedDuplicates) || other.skippedDuplicates == skippedDuplicates)&&(identical(other.remainingSec, remainingSec) || other.remainingSec == remainingSec)&&(identical(other.timeLimitWarning, timeLimitWarning) || other.timeLimitWarning == timeLimitWarning)&&(identical(other.ownAppInForeground, ownAppInForeground) || other.ownAppInForeground == ownAppInForeground)&&(identical(other.prompt, prompt) || other.prompt == prompt)&&(identical(other.errorMessage, errorMessage) || other.errorMessage == errorMessage)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.finishedAt, finishedAt) || other.finishedAt == finishedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _CaptureSession&&(identical(other.id, id) || other.id == id)&&(identical(other.targetPackage, targetPackage) || other.targetPackage == targetPackage)&&(identical(other.targetLabel, targetLabel) || other.targetLabel == targetLabel)&&(identical(other.status, status) || other.status == status)&&const DeepCollectionEquality().equals(other._screenshotPaths, _screenshotPaths)&&(identical(other.skippedDuplicates, skippedDuplicates) || other.skippedDuplicates == skippedDuplicates)&&(identical(other.remainingSec, remainingSec) || other.remainingSec == remainingSec)&&(identical(other.timeLimitWarning, timeLimitWarning) || other.timeLimitWarning == timeLimitWarning)&&(identical(other.ownAppInForeground, ownAppInForeground) || other.ownAppInForeground == ownAppInForeground)&&(identical(other.usageAccessGranted, usageAccessGranted) || other.usageAccessGranted == usageAccessGranted)&&(identical(other.targetMismatch, targetMismatch) || other.targetMismatch == targetMismatch)&&(identical(other.currentForegroundLabel, currentForegroundLabel) || other.currentForegroundLabel == currentForegroundLabel)&&(identical(other.prompt, prompt) || other.prompt == prompt)&&(identical(other.errorMessage, errorMessage) || other.errorMessage == errorMessage)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.finishedAt, finishedAt) || other.finishedAt == finishedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,targetPackage,targetLabel,status,const DeepCollectionEquality().hash(_screenshotPaths),skippedDuplicates,remainingSec,timeLimitWarning,ownAppInForeground,prompt,errorMessage,startedAt,finishedAt);
+int get hashCode => Object.hash(runtimeType,id,targetPackage,targetLabel,status,const DeepCollectionEquality().hash(_screenshotPaths),skippedDuplicates,remainingSec,timeLimitWarning,ownAppInForeground,usageAccessGranted,targetMismatch,currentForegroundLabel,prompt,errorMessage,startedAt,finishedAt);
 
 @override
 String toString() {
-  return 'CaptureSession(id: $id, targetPackage: $targetPackage, targetLabel: $targetLabel, status: $status, screenshotPaths: $screenshotPaths, skippedDuplicates: $skippedDuplicates, remainingSec: $remainingSec, timeLimitWarning: $timeLimitWarning, ownAppInForeground: $ownAppInForeground, prompt: $prompt, errorMessage: $errorMessage, startedAt: $startedAt, finishedAt: $finishedAt)';
+  return 'CaptureSession(id: $id, targetPackage: $targetPackage, targetLabel: $targetLabel, status: $status, screenshotPaths: $screenshotPaths, skippedDuplicates: $skippedDuplicates, remainingSec: $remainingSec, timeLimitWarning: $timeLimitWarning, ownAppInForeground: $ownAppInForeground, usageAccessGranted: $usageAccessGranted, targetMismatch: $targetMismatch, currentForegroundLabel: $currentForegroundLabel, prompt: $prompt, errorMessage: $errorMessage, startedAt: $startedAt, finishedAt: $finishedAt)';
 }
 
 
@@ -283,7 +295,7 @@ abstract mixin class _$CaptureSessionCopyWith<$Res> implements $CaptureSessionCo
   factory _$CaptureSessionCopyWith(_CaptureSession value, $Res Function(_CaptureSession) _then) = __$CaptureSessionCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String? targetPackage, String? targetLabel, CaptureStatus status, List<String> screenshotPaths, int skippedDuplicates, int? remainingSec, bool timeLimitWarning, bool ownAppInForeground, String? prompt, String? errorMessage, DateTime? startedAt, DateTime? finishedAt
+ String id, String? targetPackage, String? targetLabel, CaptureStatus status, List<String> screenshotPaths, int skippedDuplicates, int? remainingSec, bool timeLimitWarning, bool ownAppInForeground, bool usageAccessGranted, bool targetMismatch, String? currentForegroundLabel, String? prompt, String? errorMessage, DateTime? startedAt, DateTime? finishedAt
 });
 
 
@@ -300,7 +312,7 @@ class __$CaptureSessionCopyWithImpl<$Res>
 
 /// Create a copy of CaptureSession
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? targetPackage = freezed,Object? targetLabel = freezed,Object? status = null,Object? screenshotPaths = null,Object? skippedDuplicates = null,Object? remainingSec = freezed,Object? timeLimitWarning = null,Object? ownAppInForeground = null,Object? prompt = freezed,Object? errorMessage = freezed,Object? startedAt = freezed,Object? finishedAt = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? targetPackage = freezed,Object? targetLabel = freezed,Object? status = null,Object? screenshotPaths = null,Object? skippedDuplicates = null,Object? remainingSec = freezed,Object? timeLimitWarning = null,Object? ownAppInForeground = null,Object? usageAccessGranted = null,Object? targetMismatch = null,Object? currentForegroundLabel = freezed,Object? prompt = freezed,Object? errorMessage = freezed,Object? startedAt = freezed,Object? finishedAt = freezed,}) {
   return _then(_CaptureSession(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,targetPackage: freezed == targetPackage ? _self.targetPackage : targetPackage // ignore: cast_nullable_to_non_nullable
@@ -311,7 +323,10 @@ as List<String>,skippedDuplicates: null == skippedDuplicates ? _self.skippedDupl
 as int,remainingSec: freezed == remainingSec ? _self.remainingSec : remainingSec // ignore: cast_nullable_to_non_nullable
 as int?,timeLimitWarning: null == timeLimitWarning ? _self.timeLimitWarning : timeLimitWarning // ignore: cast_nullable_to_non_nullable
 as bool,ownAppInForeground: null == ownAppInForeground ? _self.ownAppInForeground : ownAppInForeground // ignore: cast_nullable_to_non_nullable
-as bool,prompt: freezed == prompt ? _self.prompt : prompt // ignore: cast_nullable_to_non_nullable
+as bool,usageAccessGranted: null == usageAccessGranted ? _self.usageAccessGranted : usageAccessGranted // ignore: cast_nullable_to_non_nullable
+as bool,targetMismatch: null == targetMismatch ? _self.targetMismatch : targetMismatch // ignore: cast_nullable_to_non_nullable
+as bool,currentForegroundLabel: freezed == currentForegroundLabel ? _self.currentForegroundLabel : currentForegroundLabel // ignore: cast_nullable_to_non_nullable
+as String?,prompt: freezed == prompt ? _self.prompt : prompt // ignore: cast_nullable_to_non_nullable
 as String?,errorMessage: freezed == errorMessage ? _self.errorMessage : errorMessage // ignore: cast_nullable_to_non_nullable
 as String?,startedAt: freezed == startedAt ? _self.startedAt : startedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,finishedAt: freezed == finishedAt ? _self.finishedAt : finishedAt // ignore: cast_nullable_to_non_nullable

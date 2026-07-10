@@ -244,6 +244,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   icon: const Icon(Icons.picture_in_picture_alt_outlined),
                   label: const Text('Разрешение оверлея'),
                 ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    await ref
+                        .read(captureRepositoryProvider)
+                        .requestAccessibilityAccess();
+                  },
+                  icon: const Icon(Icons.accessibility_new_outlined),
+                  label: const Text('Accessibility (фильтр по app)'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    await ref
+                        .read(captureRepositoryProvider)
+                        .requestUsageAccess();
+                  },
+                  icon: const Icon(Icons.query_stats_outlined),
+                  label: const Text('Статистика использования (запасной)'),
+                ),
                 const SizedBox(height: 24),
                 FilledButton(
                   onPressed: _save,

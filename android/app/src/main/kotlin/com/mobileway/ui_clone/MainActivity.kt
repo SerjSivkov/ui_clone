@@ -17,6 +17,7 @@ import io.flutter.plugin.common.MethodChannel
 import com.mobileway.ui_clone.capture.AppForegroundTracker
 import com.mobileway.ui_clone.capture.AppListHelper
 import com.mobileway.ui_clone.capture.CaptureEventBus
+import com.mobileway.ui_clone.capture.ForegroundAppHelper
 import com.mobileway.ui_clone.capture.ScreenCaptureService
 
 class MainActivity : FlutterActivity() {
@@ -68,6 +69,20 @@ class MainActivity : FlutterActivity() {
                         )
                         startActivityForResult(intent, REQ_OVERLAY)
                     }
+                    result.success(null)
+                }
+                "hasUsageAccess" -> {
+                    result.success(ForegroundAppHelper.canTrackForeground(this))
+                }
+                "hasAccessibilityAccess" -> {
+                    result.success(ForegroundAppHelper.hasAccessibilityAccess(this))
+                }
+                "requestUsageAccess" -> {
+                    ForegroundAppHelper.openUsageAccessSettings(this)
+                    result.success(null)
+                }
+                "requestAccessibilityAccess" -> {
+                    ForegroundAppHelper.openAccessibilitySettings(this)
                     result.success(null)
                 }
                 "startCapture" -> {

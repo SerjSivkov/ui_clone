@@ -132,6 +132,7 @@ class ScreenCaptureService : Service() {
     private var sessionTickRunnable: Runnable? = null
 
     private var sessionId: String = ""
+    private var targetPackage: String? = null
     private var targetLabel: String? = null
     private var intervalMs: Long = 1500L
     /** timer | manual | both */
@@ -151,6 +152,9 @@ class ScreenCaptureService : Service() {
     private var similarityGate = FrameSimilarityGate()
     private var ownAppSkipCount = 0
     private var lastOwnAppEmitElapsed = 0L
+    private var targetMismatchSkipCount = 0
+    private var lastTargetMismatchEmitElapsed = 0L
+    private var lastKnownForegroundPackage: String? = null
 
     private val allowsTimer: Boolean
         get() = captureMode == "timer" || captureMode == "both"
@@ -218,6 +222,7 @@ class ScreenCaptureService : Service() {
         }
 
         sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: ""
+        targetPackage = intent.getStringExtra(EXTRA_TARGET_PACKAGE)
         targetLabel = intent.getStringExtra(EXTRA_TARGET_LABEL)
         intervalMs = intent.getLongExtra(EXTRA_INTERVAL_MS, 1500L).coerceIn(800L, 5000L)
         captureMode = when (intent.getStringExtra(EXTRA_CAPTURE_MODE)) {
@@ -280,6 +285,9 @@ class ScreenCaptureService : Service() {
         timeWarningEmitted = false
         ownAppSkipCount = 0
         lastOwnAppEmitElapsed = 0L
+        targetMismatchSkipCount = 0
+        lastTargetMismatchEmitElapsed = 0L
+        lastKnownForegroundPackage = null
         sessionDeadlineElapsed = SystemClock.elapsedRealtime() + maxDurationMs
         refreshChrome(0)
         CaptureEventBus.emit(
@@ -287,10 +295,12 @@ class ScreenCaptureService : Service() {
                 "type" to "started",
                 "sessionId" to sessionId,
                 "targetLabel" to targetLabel,
+                "targetPackage" to targetPackage,
                 "captureMode" to captureMode,
                 "remainingSec" to (maxDurationMs / 1000L).toInt(),
                 "maxDurationSec" to (maxDurationMs / 1000L).toInt(),
                 "ownAppForeground" to AppForegroundTracker.isOwnAppForeground,
+                "usageAccessGranted" to ForegroundAppHelper.canTrackForeground(this),
             ),
         )
 
@@ -458,6 +468,70 @@ class ScreenCaptureService : Service() {
                 )
             }
             return
+        }
+        // When a target app was selected, only keep frames while that package
+        // is positively in the foreground. Fail closed without tracking
+        // permission and when current app != target (home / other).
+        val target = targetPackage
+        if (!target.isNullOrBlank()) {
+            if (!ForegroundAppHelper.canTrackForeground(this)) {
+                targetMismatchSkipCount++
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastTargetMismatchEmitElapsed >= 1500L) {
+                    lastTargetMismatchEmitElapsed = now
+                    CaptureEventBus.emit(
+                        mapOf(
+                            "type" to "target_mismatch",
+                            "targetPackage" to target,
+                            "currentPackage" to null,
+                            "currentLabel" to "нужен доступ Accessibility",
+                            "targetMismatchSkipped" to targetMismatchSkipCount,
+                            "count" to collectedPaths.size,
+                            "usageAccessGranted" to false,
+                        ),
+                    )
+                    refreshChrome(collectedPaths.size)
+                }
+                return
+            }
+            val current = ForegroundAppHelper.currentForegroundPackage(this)
+            lastKnownForegroundPackage = current
+            if (current != target) {
+                targetMismatchSkipCount++
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastTargetMismatchEmitElapsed >= 1500L) {
+                    lastTargetMismatchEmitElapsed = now
+                    val label = when {
+                        current.isNullOrBlank() -> "домашний экран / другое"
+                        else -> ForegroundAppHelper.labelForPackage(this, current)
+                    }
+                    CaptureEventBus.emit(
+                        mapOf(
+                            "type" to "target_mismatch",
+                            "targetPackage" to target,
+                            "currentPackage" to current,
+                            "currentLabel" to label,
+                            "targetMismatchSkipped" to targetMismatchSkipCount,
+                            "count" to collectedPaths.size,
+                            "usageAccessGranted" to true,
+                        ),
+                    )
+                    refreshChrome(collectedPaths.size)
+                }
+                return
+            }
+            if (targetMismatchSkipCount > 0) {
+                targetMismatchSkipCount = 0
+                CaptureEventBus.emit(
+                    mapOf(
+                        "type" to "target_match",
+                        "targetPackage" to target,
+                        "currentPackage" to current,
+                        "count" to collectedPaths.size,
+                    ),
+                )
+                refreshChrome(collectedPaths.size)
+            }
         }
         if (collectedPaths.size >= MAX_SHOTS) {
             finalizeCapture()
@@ -627,20 +701,35 @@ class ScreenCaptureService : Service() {
 
         val paused = isPaused.get()
         val ownFg = AppForegroundTracker.isOwnAppForeground
+        val target = targetPackage
+        val fgPkg = lastKnownForegroundPackage
+        val waitingTarget = !target.isNullOrBlank() &&
+            !ownFg &&
+            (
+                !ForegroundAppHelper.canTrackForeground(this) ||
+                    fgPkg != target
+                )
         val remainingSec = remainingSecNow()
         val nearLimit = remainingSec <= (warnBeforeMs / 1000L).toInt()
         val label = targetLabel?.let { " · $it" } ?: ""
         val skipped = similarityGate.skippedCount()
         val skippedPart = if (skipped > 0) " · дублей пропущено: $skipped" else ""
         val timePart = " · осталось ${formatRemaining(remainingSec)}"
+        val openNow = when {
+            !waitingTarget -> ""
+            fgPkg.isNullOrBlank() -> " · не цель (home/другое)"
+            else -> " · сейчас: ${ForegroundAppHelper.labelForPackage(this, fgPkg)}"
+        }
         val statusTitle = when {
             ownFg -> "UI Clone: ждём целевое app$label"
+            waitingTarget -> "UI Clone: не та цель$label"
             paused -> "UI Clone: пауза$label"
             nearLimit -> "UI Clone: скоро стоп$label"
             else -> "UI Clone: идёт сбор$label"
         }
         val modeHint = when {
             ownFg -> " · откройте цель"
+            waitingTarget -> openNow
             paused -> " · «Далее» или Стоп"
             captureMode == "manual" -> " · «+ кадр» или Стоп"
             captureMode == "both" -> " · таймер + «+ кадр»"

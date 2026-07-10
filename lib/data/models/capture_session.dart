@@ -29,6 +29,12 @@ abstract class CaptureSession with _$CaptureSession {
     @Default(false) bool timeLimitWarning,
     /// True while UI Clone itself is in the foreground (frames skipped).
     @Default(false) bool ownAppInForeground,
+    /// Usage access granted (needed to filter by target package).
+    @Default(true) bool usageAccessGranted,
+    /// True while another app (not the selected target) is in foreground.
+    @Default(false) bool targetMismatch,
+    /// Label of the app currently in foreground (UsageStats hint).
+    String? currentForegroundLabel,
     String? prompt,
     String? errorMessage,
     DateTime? startedAt,

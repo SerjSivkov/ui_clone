@@ -80,6 +80,50 @@ class AppPickerScreen extends ConsumerWidget {
                       app: app,
                       onTap: () async {
                         final repo = ref.read(captureRepositoryProvider);
+                        final canTrack = await repo.hasUsageAccess();
+                        if (!canTrack && context.mounted) {
+                          final go = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Отслеживание приложения'),
+                              content: const Text(
+                                'Чтобы сохранять кадры только из выбранного '
+                                'приложения, включите службу спец. '
+                                'возможностей «UI Clone» (Accessibility). '
+                                'Без этого сбор с привязкой к app не начнётся.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(ctx, false),
+                                  child: const Text('Отмена'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Открыть настройки'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (go == true) {
+                            await repo.requestAccessibilityAccess();
+                          }
+                          // Require tracking before starting with a target.
+                          final ready = await repo.hasUsageAccess();
+                          if (!ready) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Включите Accessibility для UI Clone и '
+                                    'выберите приложение снова.',
+                                  ),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                        }
                         final hasOverlay = await repo.hasOverlayPermission();
                         if (!hasOverlay && context.mounted) {
                           final go = await showDialog<bool>(

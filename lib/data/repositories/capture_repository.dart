@@ -37,6 +37,15 @@ class CaptureRepository {
   Future<void> requestOverlayPermission() =>
       platform.requestOverlayPermission();
 
+  Future<bool> hasUsageAccess() => platform.hasUsageAccess();
+
+  Future<void> requestUsageAccess() => platform.requestUsageAccess();
+
+  Future<bool> hasAccessibilityAccess() => platform.hasAccessibilityAccess();
+
+  Future<void> requestAccessibilityAccess() =>
+      platform.requestAccessibilityAccess();
+
   Future<CaptureSession> startSession({
     InstalledApp? target,
   }) async {

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">
+        UI Clone определяет, какое приложение сейчас на экране, чтобы сохранять
+        скриншоты только из выбранного приложения и не снимать домашний экран
+        или другие app.
+    </string>
+    <string name="accessibility_service_label">UI Clone — отслеживание приложения</string>
+</resources>

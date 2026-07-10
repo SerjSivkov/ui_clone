@@ -104,6 +104,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                             session.status,
                             showLiveControls: showLiveControls,
                             ownAppInForeground: session.ownAppInForeground,
+                            targetMismatch: session.targetMismatch,
                           ),
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
@@ -147,6 +148,68 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                           'Переключитесь на целевое приложение.',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 color: AppColors.accentDeep,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
+                    ],
+                    if (session.targetPackage != null &&
+                        !session.usageAccessGranted &&
+                        showLiveControls) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F0FF),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.slate),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Нужна служба спец. возможностей «UI Clone», '
+                              'иначе кадры для '
+                              '«${session.targetLabel ?? session.targetPackage}» '
+                              'не сохраняются.',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: () {
+                                ref
+                                    .read(captureControllerProvider.notifier)
+                                    .requestAccessibilityAccess();
+                              },
+                              child: const Text('Открыть Accessibility'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (session.targetMismatch &&
+                        !session.ownAppInForeground &&
+                        showLiveControls) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF8E8),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.warn),
+                        ),
+                        child: Text(
+                          'Сейчас открыто: '
+                          '${session.currentForegroundLabel ?? 'другое приложение'}. '
+                          'Кадры сохраняются только из '
+                          '«${session.targetLabel ?? session.targetPackage}».',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: const Color(0xFF7A4A00),
                                 fontWeight: FontWeight.w600,
                               ),
                         ),
@@ -307,6 +370,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     CaptureStatus status, {
     required bool showLiveControls,
     bool ownAppInForeground = false,
+    bool targetMismatch = false,
   }) {
     if (!showLiveControls) {
       return switch (status) {
@@ -320,6 +384,11 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         (status == CaptureStatus.capturing ||
             status == CaptureStatus.paused)) {
       return 'Ждём целевое приложение';
+    }
+    if (targetMismatch &&
+        (status == CaptureStatus.capturing ||
+            status == CaptureStatus.paused)) {
+      return 'Открыто другое приложение';
     }
     return switch (status) {
       CaptureStatus.idle => 'Ожидание',
