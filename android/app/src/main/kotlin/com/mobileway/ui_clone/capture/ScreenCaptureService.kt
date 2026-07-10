@@ -20,6 +20,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
+import android.os.Looper
 import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.view.WindowManager
@@ -638,7 +639,33 @@ class ScreenCaptureService : Service() {
             ),
         )
 
+        // Return to UI Clone after stop from overlay / notification / timer
+        // so the user sees progress and the result screen.
+        bringAppToForeground()
+
         stopForeground(STOP_FOREGROUND_REMOVE)
+    }
+
+    private fun bringAppToForeground() {
+        val launch = {
+            try {
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+                startActivity(intent)
+            } catch (_: Exception) {
+            }
+        }
+        // finalizeCapture may run on the capture HandlerThread; startActivity
+        // must be posted to the main looper.
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            launch()
+        } else {
+            Handler(Looper.getMainLooper()).post(launch)
+        }
     }
 
     private fun resolveDisplayMetrics() {
