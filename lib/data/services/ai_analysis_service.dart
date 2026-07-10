@@ -8,11 +8,14 @@ import 'package:path/path.dart' as p;
 
 import '../../core/constants/app_constants.dart';
 import '../ai_providers.dart';
+import '../models/analysis_progress.dart';
 import '../models/ui_clone_analysis.dart';
 import '../prompt_templates.dart';
 import 'analysis_response_parser.dart';
 import 'jpeg_compress.dart';
 import 'settings_service.dart';
+
+typedef AnalysisProgressCallback = void Function(AnalysisProgress progress);
 
 class AiAnalysisService {
   AiAnalysisService({
@@ -27,9 +30,23 @@ class AiAnalysisService {
     required List<String> imagePaths,
     String? targetLabel,
     String? targetPackage,
+    CancelToken? cancelToken,
+    AnalysisProgressCallback? onProgress,
   }) async {
+    final startedAt = DateTime.now();
+    void emit(AnalysisProgress progress) => onProgress?.call(progress);
+
     final apiKey = await settings.getApiKey();
     if (apiKey == null || apiKey.isEmpty) {
+      emit(
+        AnalysisProgress(
+          phase: AnalysisPhase.waiting,
+          imagesDone: 0,
+          imagesTotal: imagePaths.length.clamp(0, AppConstants.maxImagesForAnalysis),
+          fraction: 1,
+          etaSec: 0,
+        ),
+      );
       return AnalysisResponseParser.fromMarkdownOnly(
         _buildOfflinePrompt(
           imagePaths: imagePaths,
@@ -46,6 +63,17 @@ class AiAnalysisService {
       throw StateError('Нет скриншотов для анализа');
     }
 
+    final total = selected.length;
+    emit(
+      AnalysisProgress(
+        phase: AnalysisPhase.preparing,
+        imagesDone: 0,
+        imagesTotal: total,
+        fraction: 0.02,
+        etaSec: total * 2,
+      ),
+    );
+
     final providerId = AiProviders.parseId(await settings.getAiProviderId());
     final baseUrl = (await settings.getBaseUrl()).replaceAll(RegExp(r'/$'), '');
     final model = await settings.getModel();
@@ -60,10 +88,14 @@ class AiAnalysisService {
     final textPrompt =
         '$instruction${AnalysisResponseParser.responseFormatInstruction}';
 
+    _throwIfCancelled(cancelToken);
+
     final jpegQuality = await settings.getJpegQuality();
     final jpegMaxSide = await settings.getJpegMaxSide();
     final imagesB64 = <String>[];
-    for (final path in selected) {
+    for (var i = 0; i < selected.length; i++) {
+      _throwIfCancelled(cancelToken);
+      final path = selected[i];
       final bytes = await File(path).readAsBytes();
       final compressed = await compute(
         compressJpegBytes,
@@ -74,8 +106,39 @@ class AiAnalysisService {
         ),
       );
       imagesB64.add(base64Encode(compressed));
+
+      final done = i + 1;
+      final elapsedMs =
+          DateTime.now().difference(startedAt).inMilliseconds.clamp(1, 1 << 30);
+      final perImageMs = elapsedMs / done;
+      final remainPrepare = ((total - done) * perImageMs / 1000).ceil();
+      // Prepare is ~0..0.35 of overall progress.
+      final fraction = 0.05 + 0.30 * (done / total);
+      emit(
+        AnalysisProgress(
+          phase: AnalysisPhase.preparing,
+          imagesDone: done,
+          imagesTotal: total,
+          fraction: fraction,
+          etaSec: remainPrepare + _estimateUploadWaitSec(total),
+        ),
+      );
     }
 
+    _throwIfCancelled(cancelToken);
+
+    final uploadEta = _estimateUploadWaitSec(total);
+    emit(
+      AnalysisProgress(
+        phase: AnalysisPhase.uploading,
+        imagesDone: total,
+        imagesTotal: total,
+        fraction: 0.38,
+        etaSec: uploadEta,
+      ),
+    );
+
+    final waitStartedAt = DateTime.now();
     try {
       final text = switch (providerId) {
         AiProviderId.anthropic => await _callAnthropic(
@@ -84,6 +147,16 @@ class AiAnalysisService {
             model: model,
             textPrompt: textPrompt,
             imagesB64: imagesB64,
+            cancelToken: cancelToken,
+            onSendProgress: (sent, totalBytes) {
+              _emitUploadProgress(
+                emit: emit,
+                imagesTotal: total,
+                sent: sent,
+                totalBytes: totalBytes,
+                waitStartedAt: waitStartedAt,
+              );
+            },
           ),
         AiProviderId.gemini => await _callGemini(
             baseUrl: baseUrl,
@@ -91,6 +164,16 @@ class AiAnalysisService {
             model: model,
             textPrompt: textPrompt,
             imagesB64: imagesB64,
+            cancelToken: cancelToken,
+            onSendProgress: (sent, totalBytes) {
+              _emitUploadProgress(
+                emit: emit,
+                imagesTotal: total,
+                sent: sent,
+                totalBytes: totalBytes,
+                waitStartedAt: waitStartedAt,
+              );
+            },
           ),
         AiProviderId.openai || AiProviderId.openaiCompatible =>
           await _callOpenAiCompatible(
@@ -99,13 +182,35 @@ class AiAnalysisService {
             model: model,
             textPrompt: textPrompt,
             imagesB64: imagesB64,
+            cancelToken: cancelToken,
+            onSendProgress: (sent, totalBytes) {
+              _emitUploadProgress(
+                emit: emit,
+                imagesTotal: total,
+                sent: sent,
+                totalBytes: totalBytes,
+                waitStartedAt: waitStartedAt,
+              );
+            },
           ),
       };
       if (text.trim().isEmpty) {
         throw StateError('Пустой ответ модели');
       }
+      emit(
+        AnalysisProgress(
+          phase: AnalysisPhase.waiting,
+          imagesDone: total,
+          imagesTotal: total,
+          fraction: 1,
+          etaSec: 0,
+        ),
+      );
       return AnalysisResponseParser.parse(text);
     } on DioException catch (e, st) {
+      if (CancelToken.isCancel(e) || cancelToken?.isCancelled == true) {
+        throw const AnalysisCancelledException();
+      }
       log('AI analysis failed: ${e.message}', stackTrace: st);
       return AnalysisResponseParser.fromMarkdownOnly(
         _buildOfflinePrompt(
@@ -119,12 +224,75 @@ class AiAnalysisService {
     }
   }
 
+  void _emitUploadProgress({
+    required AnalysisProgressCallback emit,
+    required int imagesTotal,
+    required int sent,
+    required int totalBytes,
+    required DateTime waitStartedAt,
+  }) {
+    if (totalBytes <= 0) {
+      emit(
+        AnalysisProgress(
+          phase: AnalysisPhase.uploading,
+          imagesDone: imagesTotal,
+          imagesTotal: imagesTotal,
+          fraction: 0.45,
+          etaSec: _estimateUploadWaitSec(imagesTotal),
+        ),
+      );
+      return;
+    }
+    final ratio = (sent / totalBytes).clamp(0.0, 1.0);
+    final elapsed =
+        DateTime.now().difference(waitStartedAt).inMilliseconds.clamp(1, 1 << 30);
+    final remainUpload = ratio >= 0.99
+        ? 0
+        : (((1 - ratio) * elapsed / ratio) / 1000).ceil();
+    if (ratio >= 0.98) {
+      emit(
+        AnalysisProgress(
+          phase: AnalysisPhase.waiting,
+          imagesDone: imagesTotal,
+          imagesTotal: imagesTotal,
+          fraction: 0.72,
+          etaSec: _estimateModelWaitSec(imagesTotal),
+        ),
+      );
+      return;
+    }
+    emit(
+      AnalysisProgress(
+        phase: AnalysisPhase.uploading,
+        imagesDone: imagesTotal,
+        imagesTotal: imagesTotal,
+        fraction: 0.38 + 0.32 * ratio,
+        etaSec: remainUpload + _estimateModelWaitSec(imagesTotal),
+      ),
+    );
+  }
+
+  static int _estimateUploadWaitSec(int imageCount) =>
+      8 + imageCount * 3;
+
+  static int _estimateModelWaitSec(int imageCount) =>
+      20 + imageCount * 5;
+
+  static void _throwIfCancelled(CancelToken? token) {
+    if (token == null) return;
+    if (token.isCancelled) {
+      throw const AnalysisCancelledException();
+    }
+  }
+
   Future<String> _callOpenAiCompatible({
     required String baseUrl,
     required String apiKey,
     required String model,
     required String textPrompt,
     required List<String> imagesB64,
+    CancelToken? cancelToken,
+    ProgressCallback? onSendProgress,
   }) async {
     final content = <Map<String, dynamic>>[
       {'type': 'text', 'text': textPrompt},
@@ -140,6 +308,8 @@ class AiAnalysisService {
 
     final response = await _dio.post<Map<String, dynamic>>(
       '$baseUrl/chat/completions',
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
       options: Options(
         headers: {
           'Authorization': 'Bearer $apiKey',
@@ -170,6 +340,8 @@ class AiAnalysisService {
     required String model,
     required String textPrompt,
     required List<String> imagesB64,
+    CancelToken? cancelToken,
+    ProgressCallback? onSendProgress,
   }) async {
     final content = <Map<String, dynamic>>[
       {'type': 'text', 'text': textPrompt},
@@ -187,6 +359,8 @@ class AiAnalysisService {
     final root = baseUrl.contains('/v1') ? baseUrl : '$baseUrl/v1';
     final response = await _dio.post<Map<String, dynamic>>(
       '$root/messages',
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
       options: Options(
         headers: {
           'x-api-key': apiKey,
@@ -224,6 +398,8 @@ class AiAnalysisService {
     required String model,
     required String textPrompt,
     required List<String> imagesB64,
+    CancelToken? cancelToken,
+    ProgressCallback? onSendProgress,
   }) async {
     final parts = <Map<String, dynamic>>[
       {'text': textPrompt},
@@ -240,6 +416,8 @@ class AiAnalysisService {
         '$baseUrl/models/$model:generateContent?key=${Uri.encodeQueryComponent(apiKey)}';
     final response = await _dio.post<Map<String, dynamic>>(
       url,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
       options: Options(
         headers: {'Content-Type': 'application/json'},
         receiveTimeout: const Duration(minutes: 3),

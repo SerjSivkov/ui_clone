@@ -39,6 +39,14 @@ abstract class CaptureSession with _$CaptureSession {
     String? prompt,
     /// Pretty-printed structured JSON (palette / screens / components).
     String? structuredJson,
+    /// 0..1 while [status] is analyzing; null otherwise.
+    double? analysisProgress,
+    /// preparing | uploading | waiting
+    String? analysisPhase,
+    @Default(0) int analysisImagesDone,
+    @Default(0) int analysisImagesTotal,
+    /// Rough ETA in seconds while analyzing.
+    int? analysisEtaSec,
     String? errorMessage,
     DateTime? startedAt,
     DateTime? finishedAt,

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:developer';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/models/analysis_progress.dart';
 import '../../data/models/capture_session.dart';
 import '../../data/models/installed_app.dart';
 import '../../data/repositories/capture_repository.dart';
@@ -66,6 +68,9 @@ class CaptureController extends StateNotifier<CaptureSession> {
   /// Inferred from frames when capture started without an explicit target.
   String? _inferredPackage;
   String? _inferredLabel;
+
+  CancelToken? _analyzeCancel;
+  Timer? _etaTicker;
 
   static String? _nonEmpty(String? value) {
     final t = value?.trim();
@@ -407,20 +412,43 @@ class CaptureController extends StateNotifier<CaptureSession> {
       return;
     }
 
-    state = state.copyWith(status: CaptureStatus.analyzing);
+    state = state.copyWith(
+      status: CaptureStatus.analyzing,
+      analysisProgress: 0.02,
+      analysisPhase: AnalysisPhase.preparing.name,
+      analysisImagesDone: 0,
+      analysisImagesTotal: 0,
+      analysisEtaSec: null,
+    );
+    _startEtaTicker();
     await Future<void>.delayed(Duration.zero);
     if (generation != _generation) return;
 
     final label = _resolvedLabel();
     final package = _resolvedPackage();
+    final cancel = CancelToken();
+    _analyzeCancel = cancel;
 
     try {
       final result = await _repo.analyze(
         paths: merged,
         targetLabel: label,
         targetPackage: package,
+        cancelToken: cancel,
+        onProgress: (progress) {
+          if (generation != _generation || _disposed) return;
+          if (state.status != CaptureStatus.analyzing) return;
+          state = state.copyWith(
+            analysisProgress: progress.fraction,
+            analysisPhase: progress.phase.name,
+            analysisImagesDone: progress.imagesDone,
+            analysisImagesTotal: progress.imagesTotal,
+            analysisEtaSec: progress.etaSec,
+          );
+        },
       );
       if (generation != _generation || _disposed) return;
+      _stopEtaTicker();
       state = state.copyWith(
         prompt: result.markdown,
         structuredJson: result.structuredJson,
@@ -428,16 +456,59 @@ class CaptureController extends StateNotifier<CaptureSession> {
         finishedAt: DateTime.now(),
         targetLabel: label ?? state.targetLabel,
         targetPackage: package ?? state.targetPackage,
+        analysisProgress: 1,
+        analysisEtaSec: 0,
+      );
+    } on AnalysisCancelledException {
+      if (generation != _generation || _disposed) return;
+      _stopEtaTicker();
+      state = state.copyWith(
+        status: CaptureStatus.failed,
+        errorMessage: 'Анализ отменён',
+        finishedAt: DateTime.now(),
+        analysisProgress: null,
+        analysisPhase: null,
+        analysisEtaSec: null,
       );
     } catch (e, st) {
       log('analyze failed', error: e, stackTrace: st);
       if (generation != _generation || _disposed) return;
+      _stopEtaTicker();
       state = state.copyWith(
         status: CaptureStatus.failed,
         errorMessage: e.toString(),
         finishedAt: DateTime.now(),
+        analysisProgress: null,
+        analysisPhase: null,
+        analysisEtaSec: null,
       );
+    } finally {
+      _stopEtaTicker();
+      if (identical(_analyzeCancel, cancel)) {
+        _analyzeCancel = null;
+      }
     }
+  }
+
+  void cancelAnalysis() {
+    final token = _analyzeCancel;
+    if (token == null || token.isCancelled) return;
+    token.cancel('user');
+  }
+
+  void _startEtaTicker() {
+    _etaTicker?.cancel();
+    _etaTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_disposed || state.status != CaptureStatus.analyzing) return;
+      final eta = state.analysisEtaSec;
+      if (eta == null || eta <= 0) return;
+      state = state.copyWith(analysisEtaSec: eta - 1);
+    });
+  }
+
+  void _stopEtaTicker() {
+    _etaTicker?.cancel();
+    _etaTicker = null;
   }
 
   void _rememberForeground(String? package, String? label) {
@@ -459,6 +530,9 @@ class CaptureController extends StateNotifier<CaptureSession> {
       _resolvedPackage();
 
   void reset() {
+    _stopEtaTicker();
+    _analyzeCancel?.cancel('reset');
+    _analyzeCancel = null;
     _generation++;
     _activeGeneration = _generation;
     _sessionTargetPackage = null;
@@ -472,6 +546,9 @@ class CaptureController extends StateNotifier<CaptureSession> {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _stopEtaTicker();
+    _analyzeCancel?.cancel('dispose');
+    _analyzeCancel = null;
     _generation++;
     unawaited(_sub?.cancel());
     super.dispose();

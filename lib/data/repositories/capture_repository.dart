@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/constants/app_constants.dart';
@@ -98,6 +99,8 @@ class CaptureRepository {
     required List<String> paths,
     String? targetLabel,
     String? targetPackage,
+    CancelToken? cancelToken,
+    AnalysisProgressCallback? onProgress,
   }) {
     final limited = paths.length > AppConstants.maxScreenshotsPerSession
         ? paths.sublist(0, AppConstants.maxScreenshotsPerSession)
@@ -106,6 +109,8 @@ class CaptureRepository {
       imagePaths: limited,
       targetLabel: targetLabel,
       targetPackage: targetPackage,
+      cancelToken: cancelToken,
+      onProgress: onProgress,
     );
   }
 

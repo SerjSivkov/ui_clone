@@ -28,6 +28,11 @@ _CaptureSession _$CaptureSessionFromJson(Map<String, dynamic> json) =>
       currentForegroundLabel: json['currentForegroundLabel'] as String?,
       prompt: json['prompt'] as String?,
       structuredJson: json['structuredJson'] as String?,
+      analysisProgress: (json['analysisProgress'] as num?)?.toDouble(),
+      analysisPhase: json['analysisPhase'] as String?,
+      analysisImagesDone: (json['analysisImagesDone'] as num?)?.toInt() ?? 0,
+      analysisImagesTotal: (json['analysisImagesTotal'] as num?)?.toInt() ?? 0,
+      analysisEtaSec: (json['analysisEtaSec'] as num?)?.toInt(),
       errorMessage: json['errorMessage'] as String?,
       startedAt: json['startedAt'] == null
           ? null
@@ -53,6 +58,11 @@ Map<String, dynamic> _$CaptureSessionToJson(_CaptureSession instance) =>
       'currentForegroundLabel': instance.currentForegroundLabel,
       'prompt': instance.prompt,
       'structuredJson': instance.structuredJson,
+      'analysisProgress': instance.analysisProgress,
+      'analysisPhase': instance.analysisPhase,
+      'analysisImagesDone': instance.analysisImagesDone,
+      'analysisImagesTotal': instance.analysisImagesTotal,
+      'analysisEtaSec': instance.analysisEtaSec,
       'errorMessage': instance.errorMessage,
       'startedAt': instance.startedAt?.toIso8601String(),
       'finishedAt': instance.finishedAt?.toIso8601String(),

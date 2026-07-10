@@ -239,7 +239,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     const SizedBox(height: 8),
                     Text(
                       isProcessing
-                          ? 'Сбор остановлен. Готовим промпт…'
+                          ? (session.status == CaptureStatus.analyzing
+                              ? 'Готовим и отправляем скриншоты в AI…'
+                              : 'Сбор остановлен. Готовим промпт…')
                           : isPaused
                               ? 'Пауза: таймер остановлен. «+ кадр» в оверлее '
                                   'всё ещё работает. Нажмите «Далее».'
@@ -291,45 +293,82 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
               ),
               const SizedBox(height: 12),
               if (isProcessing) ...[
-                const LinearProgressIndicator(),
-                const SizedBox(height: 12),
-                Text(
-                  switch (session.status) {
-                    CaptureStatus.analyzing =>
-                      'Собираем промпт по скриншотам…',
-                    CaptureStatus.completed => 'Промпт готов…',
-                    CaptureStatus.failed =>
-                      session.errorMessage ?? 'Ошибка обработки',
-                    _ => 'Останавливаем сбор…',
-                  },
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: null,
-                  icon: Icon(
-                    switch (session.status) {
-                      CaptureStatus.analyzing ||
-                      CaptureStatus.completed =>
-                        Icons.auto_awesome_rounded,
-                      CaptureStatus.failed => Icons.error_outline_rounded,
-                      _ => Icons.hourglass_top_rounded,
+                if (session.status == CaptureStatus.analyzing) ...[
+                  LinearProgressIndicator(
+                    value: session.analysisProgress?.clamp(0.0, 1.0),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _analysisDetail(session),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _analysisPhaseLabel(session.analysisPhase),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.slate,
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      ref
+                          .read(captureControllerProvider.notifier)
+                          .cancelAnalysis();
                     },
+                    icon: const Icon(Icons.close_rounded),
+                    label: const Text('Отменить анализ'),
                   ),
-                  label: Text(
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    onPressed: null,
+                    icon: const Icon(Icons.auto_awesome_rounded),
+                    label: const Text('Анализ…'),
+                    style: FilledButton.styleFrom(
+                      disabledBackgroundColor: AppColors.slate,
+                      disabledForegroundColor: Colors.white,
+                    ),
+                  ),
+                ] else ...[
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(
                     switch (session.status) {
-                      CaptureStatus.analyzing => 'Анализ…',
-                      CaptureStatus.completed => 'Готово',
-                      CaptureStatus.failed => 'Ошибка',
-                      _ => 'Остановка…',
+                      CaptureStatus.completed => 'Промпт готов…',
+                      CaptureStatus.failed =>
+                        session.errorMessage ?? 'Ошибка обработки',
+                      _ => 'Останавливаем сбор…',
                     },
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
-                  style: FilledButton.styleFrom(
-                    disabledBackgroundColor: AppColors.slate,
-                    disabledForegroundColor: Colors.white,
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: null,
+                    icon: Icon(
+                      switch (session.status) {
+                        CaptureStatus.completed => Icons.auto_awesome_rounded,
+                        CaptureStatus.failed => Icons.error_outline_rounded,
+                        _ => Icons.hourglass_top_rounded,
+                      },
+                    ),
+                    label: Text(
+                      switch (session.status) {
+                        CaptureStatus.completed => 'Готово',
+                        CaptureStatus.failed => 'Ошибка',
+                        _ => 'Остановка…',
+                      },
+                    ),
+                    style: FilledButton.styleFrom(
+                      disabledBackgroundColor: AppColors.slate,
+                      disabledForegroundColor: Colors.white,
+                    ),
                   ),
-                ),
+                ],
               ] else ...[
                 OutlinedButton.icon(
                   onPressed: () {
@@ -364,6 +403,37 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         ),
       ),
     );
+  }
+
+  String _analysisPhaseLabel(String? phase) {
+    return switch (phase) {
+      'preparing' => 'Подготовка изображений',
+      'uploading' => 'Отправка в AI',
+      'waiting' => 'Ждём ответ модели',
+      _ => 'Анализ AI',
+    };
+  }
+
+  String _analysisDetail(CaptureSession session) {
+    final done = session.analysisImagesDone;
+    final total = session.analysisImagesTotal;
+    final images = total > 0 ? '$done/$total' : (done > 0 ? '$done' : '…');
+    final eta = session.analysisEtaSec;
+    final etaLabel = eta == null
+        ? null
+        : eta <= 0
+            ? 'скоро'
+            : '~$eta с';
+    return switch (session.analysisPhase) {
+      'preparing' =>
+        etaLabel == null ? 'Сжатие $images' : 'Сжатие $images · $etaLabel',
+      'uploading' =>
+        etaLabel == null ? 'Загрузка $images' : 'Загрузка $images · $etaLabel',
+      'waiting' => etaLabel == null
+          ? 'Анализ $images фото'
+          : 'Анализ $images фото · $etaLabel',
+      _ => 'Собираем промпт…',
+    };
   }
 
   String _statusLabel(
