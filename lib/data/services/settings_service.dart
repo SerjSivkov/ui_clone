@@ -166,4 +166,34 @@ class SettingsService {
     }
     await prefs.setString(AppConstants.prefsSystemPrompt, value);
   }
+
+  Future<int> getJpegQuality() async {
+    final prefs = await _prefsFuture;
+    return (prefs.getInt(AppConstants.prefsJpegQuality) ??
+            AppConstants.defaultJpegQuality)
+        .clamp(40, 95);
+  }
+
+  Future<void> setJpegQuality(int value) async {
+    final prefs = await _prefsFuture;
+    await prefs.setInt(
+      AppConstants.prefsJpegQuality,
+      value.clamp(40, 95),
+    );
+  }
+
+  Future<int> getJpegMaxSide() async {
+    final prefs = await _prefsFuture;
+    return (prefs.getInt(AppConstants.prefsJpegMaxSide) ??
+            AppConstants.defaultJpegMaxSide)
+        .clamp(512, 2048);
+  }
+
+  Future<void> setJpegMaxSide(int value) async {
+    final prefs = await _prefsFuture;
+    await prefs.setInt(
+      AppConstants.prefsJpegMaxSide,
+      value.clamp(512, 2048),
+    );
+  }
 }

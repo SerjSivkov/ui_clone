@@ -48,6 +48,7 @@
 - Провайдер vision: OpenAI · Anthropic · Gemini · OpenAI-compatible.
 - API key (secure storage).
 - Base URL (редактируется для Anthropic и OpenAI-compatible) и имя модели.
+- Сжатие JPEG перед upload: качество (40–95%) и max side (512–2048 px).
 - Системный промпт: шаблоны Flutter / React Native / Figma / общий UX,
   редактирование текста, сброс к шаблону; плейсхолдеры `{{app}}`,
   `{{package}}`, `{{count}}`.

@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show compute;
@@ -12,6 +11,7 @@ import '../ai_providers.dart';
 import '../models/ui_clone_analysis.dart';
 import '../prompt_templates.dart';
 import 'analysis_response_parser.dart';
+import 'jpeg_compress.dart';
 import 'settings_service.dart';
 
 class AiAnalysisService {
@@ -59,10 +59,19 @@ class AiAnalysisService {
     final textPrompt =
         '$instruction${AnalysisResponseParser.responseFormatInstruction}';
 
+    final jpegQuality = await settings.getJpegQuality();
+    final jpegMaxSide = await settings.getJpegMaxSide();
     final imagesB64 = <String>[];
     for (final path in selected) {
       final bytes = await File(path).readAsBytes();
-      final compressed = await compute(_compressJpegBytes, bytes);
+      final compressed = await compute(
+        compressJpegBytes,
+        JpegCompressArgs(
+          bytes: bytes,
+          quality: jpegQuality,
+          maxSide: jpegMaxSide,
+        ),
+      );
       imagesB64.add(base64Encode(compressed));
     }
 
@@ -314,11 +323,4 @@ ${targetPackage != null ? '(`$targetPackage`)' : ''}.
 4. Готовый план файлов `lib/features/...` для реализации.
 ''';
   }
-}
-
-Uint8List _compressJpegBytes(Uint8List bytes) {
-  if (bytes.lengthInBytes <= 350 * 1024) {
-    return bytes;
-  }
-  return bytes;
 }

@@ -26,6 +26,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   double _maxSessionMin = AppConstants.defaultMaxSessionSec / 60;
   String _promptTemplateId = AppConstants.defaultPromptTemplateId;
   String _aiProviderId = AppConstants.defaultAiProviderId;
+  double _jpegQuality = AppConstants.defaultJpegQuality.toDouble();
+  double _jpegMaxSide = AppConstants.defaultJpegMaxSide.toDouble();
   bool _loading = true;
   bool _obscure = true;
 
@@ -49,6 +51,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final maxSessionSec = await settings.getMaxSessionSec();
     final templateId = await settings.getPromptTemplateId();
     final systemPrompt = await settings.getSystemPrompt();
+    final jpegQuality = await settings.getJpegQuality();
+    final jpegMaxSide = await settings.getJpegMaxSide();
     if (!mounted) return;
     setState(() {
       _apiKeyCtrl.text = key ?? '';
@@ -61,6 +65,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _maxSessionMin = maxSessionSec / 60;
       _promptTemplateId = templateId;
       _promptCtrl.text = systemPrompt;
+      _jpegQuality = jpegQuality.toDouble();
+      _jpegMaxSide = jpegMaxSide.toDouble();
       _loading = false;
     });
   }
@@ -77,6 +83,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await settings.setMaxSessionSec((_maxSessionMin * 60).round());
     await settings.setPromptTemplateId(_promptTemplateId);
     await settings.setSystemPrompt(_promptCtrl.text);
+    await settings.setJpegQuality(_jpegQuality.round());
+    await settings.setJpegMaxSide(_jpegMaxSide.round());
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Сохранено')),
@@ -230,6 +238,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     labelText: 'Модель',
                     hintText: provider.defaultModel,
                   ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Сжатие перед upload: качество ${_jpegQuality.round()}%',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                Text(
+                  'Меньше — быстрее и дешевле по токенам; больше — детальнее.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.slate,
+                      ),
+                ),
+                Slider(
+                  value: _jpegQuality,
+                  min: 40,
+                  max: 95,
+                  divisions: 11,
+                  label: '${_jpegQuality.round()}%',
+                  onChanged: (v) => setState(() => _jpegQuality = v),
+                ),
+                Text(
+                  'Макс. сторона: ${_jpegMaxSide.round()} px',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                Text(
+                  'Длинная сторона кадра ограничивается перед отправкой в API.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.slate,
+                      ),
+                ),
+                Slider(
+                  value: _jpegMaxSide,
+                  min: 512,
+                  max: 2048,
+                  divisions: 12,
+                  label: '${_jpegMaxSide.round()} px',
+                  onChanged: (v) => setState(() => _jpegMaxSide = v),
                 ),
                 const SizedBox(height: 28),
                 Text(

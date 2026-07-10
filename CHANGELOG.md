@@ -13,6 +13,7 @@
 - Feat: выбор vision-провайдера — OpenAI, Anthropic, Gemini,
   OpenAI-compatible (свой Base URL); для Anthropic Base URL тоже
   редактируемый (прокси).
+- Feat: сжатие JPEG перед upload — качество и max side в настройках.
 
 ## 1.0.0
 

@@ -25,6 +25,10 @@ abstract final class AppConstants {
   static const String defaultVisionModel = 'gpt-4o-mini';
   static const String defaultPromptTemplateId = 'flutter';
   static const String defaultAiProviderId = 'openai';
+  /// JPEG quality for vision upload (40–95).
+  static const int defaultJpegQuality = 70;
+  /// Longest side in px before upload (512–2048).
+  static const int defaultJpegMaxSide = 1280;
 
   static const String prefsApiKey = 'openai_api_key';
   static const String prefsBaseUrl = 'openai_base_url';
@@ -36,4 +40,6 @@ abstract final class AppConstants {
   static const String prefsMaxSessionSec = 'capture_max_session_sec';
   static const String prefsPromptTemplateId = 'prompt_template_id';
   static const String prefsSystemPrompt = 'system_prompt';
+  static const String prefsJpegQuality = 'jpeg_upload_quality';
+  static const String prefsJpegMaxSide = 'jpeg_upload_max_side';
 }
