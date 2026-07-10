@@ -103,6 +103,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                           _statusLabel(
                             session.status,
                             showLiveControls: showLiveControls,
+                            ownAppInForeground: session.ownAppInForeground,
                           ),
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
@@ -131,6 +132,26 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                       '${session.remainingSec != null ? ' · ${_formatRemaining(session.remainingSec!)}' : ''}',
                       style: Theme.of(context).textTheme.headlineMedium,
                     ),
+                    if (session.ownAppInForeground && showLiveControls) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F4F4),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.accent),
+                        ),
+                        child: Text(
+                          'Сейчас открыт UI Clone — кадры не сохраняются. '
+                          'Переключитесь на целевое приложение.',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: AppColors.accentDeep,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
+                    ],
                     if (session.timeLimitWarning && showLiveControls) ...[
                       const SizedBox(height: 10),
                       Container(
@@ -285,6 +306,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   String _statusLabel(
     CaptureStatus status, {
     required bool showLiveControls,
+    bool ownAppInForeground = false,
   }) {
     if (!showLiveControls) {
       return switch (status) {
@@ -293,6 +315,11 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         CaptureStatus.failed => 'Ошибка',
         _ => 'Остановка',
       };
+    }
+    if (ownAppInForeground &&
+        (status == CaptureStatus.capturing ||
+            status == CaptureStatus.paused)) {
+      return 'Ждём целевое приложение';
     }
     return switch (status) {
       CaptureStatus.idle => 'Ожидание',

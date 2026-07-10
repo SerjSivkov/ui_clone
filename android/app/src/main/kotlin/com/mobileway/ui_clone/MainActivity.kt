@@ -14,6 +14,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import com.mobileway.ui_clone.capture.AppForegroundTracker
 import com.mobileway.ui_clone.capture.AppListHelper
 import com.mobileway.ui_clone.capture.CaptureEventBus
 import com.mobileway.ui_clone.capture.ScreenCaptureService
@@ -206,6 +207,18 @@ class MainActivity : FlutterActivity() {
                 REQ_NOTIFICATIONS,
             )
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        AppForegroundTracker.setOwnAppForeground(true)
+        ScreenCaptureService.notifyOwnAppForeground(this, true)
+    }
+
+    override fun onStop() {
+        AppForegroundTracker.setOwnAppForeground(false)
+        ScreenCaptureService.notifyOwnAppForeground(this, false)
+        super.onStop()
     }
 
     override fun onDestroy() {

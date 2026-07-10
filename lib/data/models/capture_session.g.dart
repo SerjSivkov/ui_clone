@@ -22,6 +22,7 @@ _CaptureSession _$CaptureSessionFromJson(Map<String, dynamic> json) =>
       skippedDuplicates: (json['skippedDuplicates'] as num?)?.toInt() ?? 0,
       remainingSec: (json['remainingSec'] as num?)?.toInt(),
       timeLimitWarning: json['timeLimitWarning'] as bool? ?? false,
+      ownAppInForeground: json['ownAppInForeground'] as bool? ?? false,
       prompt: json['prompt'] as String?,
       errorMessage: json['errorMessage'] as String?,
       startedAt: json['startedAt'] == null
@@ -42,6 +43,7 @@ Map<String, dynamic> _$CaptureSessionToJson(_CaptureSession instance) =>
       'skippedDuplicates': instance.skippedDuplicates,
       'remainingSec': instance.remainingSec,
       'timeLimitWarning': instance.timeLimitWarning,
+      'ownAppInForeground': instance.ownAppInForeground,
       'prompt': instance.prompt,
       'errorMessage': instance.errorMessage,
       'startedAt': instance.startedAt?.toIso8601String(),

@@ -160,6 +160,15 @@ sealed class CaptureEvent {
 
   factory CaptureEvent.timeLimit() = CaptureTimeLimit;
 
+  factory CaptureEvent.ownAppForeground({
+    required bool active,
+    required int ownAppSkipped,
+  }) = CaptureOwnAppForeground;
+
+  factory CaptureEvent.ownAppSkipped({
+    required int ownAppSkipped,
+  }) = CaptureOwnAppSkipped;
+
   factory CaptureEvent.stopped({
     required List<String> paths,
     required String reason,
@@ -207,6 +216,15 @@ sealed class CaptureEvent {
         );
       case 'time_limit':
         return CaptureTimeLimit();
+      case 'own_app_foreground':
+        return CaptureOwnAppForeground(
+          active: map['active'] as bool? ?? false,
+          ownAppSkipped: (map['ownAppSkipped'] as num?)?.toInt() ?? 0,
+        );
+      case 'own_app_skipped':
+        return CaptureOwnAppSkipped(
+          ownAppSkipped: (map['ownAppSkipped'] as num?)?.toInt() ?? 0,
+        );
       case 'stopped':
         final paths = (map['paths'] as List<dynamic>?)
                 ?.whereType<String>()
@@ -293,6 +311,22 @@ final class CaptureTimeWarning extends CaptureEvent {
 
 final class CaptureTimeLimit extends CaptureEvent {
   const CaptureTimeLimit();
+}
+
+final class CaptureOwnAppForeground extends CaptureEvent {
+  const CaptureOwnAppForeground({
+    required this.active,
+    required this.ownAppSkipped,
+  });
+
+  final bool active;
+  final int ownAppSkipped;
+}
+
+final class CaptureOwnAppSkipped extends CaptureEvent {
+  const CaptureOwnAppSkipped({required this.ownAppSkipped});
+
+  final int ownAppSkipped;
 }
 
 final class CaptureStopped extends CaptureEvent {

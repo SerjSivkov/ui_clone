@@ -27,6 +27,8 @@ abstract class CaptureSession with _$CaptureSession {
     int? remainingSec,
     /// True after native time_warning (near limit).
     @Default(false) bool timeLimitWarning,
+    /// True while UI Clone itself is in the foreground (frames skipped).
+    @Default(false) bool ownAppInForeground,
     String? prompt,
     String? errorMessage,
     DateTime? startedAt,

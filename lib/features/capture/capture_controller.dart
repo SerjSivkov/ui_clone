@@ -86,6 +86,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
           status: CaptureStatus.capturing,
           remainingSec: remainingSec ?? state.remainingSec,
           timeLimitWarning: false,
+          ownAppInForeground: false,
         );
       case CaptureScreenshotTaken(:final path, :final count, :final skipped):
         if (_activeGeneration != _generation) return;
@@ -164,6 +165,14 @@ class CaptureController extends StateNotifier<CaptureSession> {
           remainingSec: 0,
           timeLimitWarning: true,
         );
+      case CaptureOwnAppForeground(:final active):
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed) return;
+        state = state.copyWith(ownAppInForeground: active);
+      case CaptureOwnAppSkipped():
+        if (_activeGeneration != _generation) return;
+        if (_captureClosed) return;
+        state = state.copyWith(ownAppInForeground: true);
       case CaptureStopped(:final paths):
         if (_activeGeneration != _generation) return;
         if (_captureClosed) return;
@@ -199,6 +208,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
       skippedDuplicates: 0,
       remainingSec: null,
       timeLimitWarning: false,
+      ownAppInForeground: false,
     );
 
     try {

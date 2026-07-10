@@ -40,6 +40,7 @@ class ScreenCaptureService : Service() {
         const val ACTION_TOGGLE_PAUSE = "com.mobileway.ui_clone.capture.TOGGLE_PAUSE"
         const val ACTION_PAUSE = "com.mobileway.ui_clone.capture.PAUSE"
         const val ACTION_RESUME = "com.mobileway.ui_clone.capture.RESUME"
+        const val ACTION_FOREGROUND = "com.mobileway.ui_clone.capture.FOREGROUND"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
         const val EXTRA_SESSION_ID = "sessionId"
@@ -51,6 +52,7 @@ class ScreenCaptureService : Service() {
         const val EXTRA_CAPTURE_MODE = "captureMode"
         const val EXTRA_MAX_DURATION_MS = "maxDurationMs"
         const val EXTRA_WARN_BEFORE_MS = "warnBeforeMs"
+        const val EXTRA_OWN_APP_FOREGROUND = "ownAppForeground"
 
         private const val CHANNEL_ID = "ui_clone_capture"
         private const val NOTIFICATION_ID = 7101
@@ -98,6 +100,20 @@ class ScreenCaptureService : Service() {
             context.startService(intent)
         }
 
+        fun notifyOwnAppForeground(context: Context, foreground: Boolean) {
+            AppForegroundTracker.setOwnAppForeground(foreground)
+            val intent = Intent(context, ScreenCaptureService::class.java).apply {
+                action = ACTION_FOREGROUND
+                putExtra(EXTRA_OWN_APP_FOREGROUND, foreground)
+            }
+            // startService is fine even if capture isn't running — onStartCommand
+            // no-ops when not capturing.
+            try {
+                context.startService(intent)
+            } catch (_: Exception) {
+            }
+        }
+
         fun stopAndCollect(context: Context): List<String> {
             // Do not sleep on the binder/UI thread — it freezes Flutter frames
             // so the "stopping" button state never paints.
@@ -133,6 +149,8 @@ class ScreenCaptureService : Service() {
     private val isPaused = AtomicBoolean(false)
     private val isSaving = AtomicBoolean(false)
     private var similarityGate = FrameSimilarityGate()
+    private var ownAppSkipCount = 0
+    private var lastOwnAppEmitElapsed = 0L
 
     private val allowsTimer: Boolean
         get() = captureMode == "timer" || captureMode == "both"
@@ -157,7 +175,6 @@ class ScreenCaptureService : Service() {
                 stopSelf()
             }
             ACTION_SHOT -> {
-                // Manual shots work even while paused (selective capture).
                 if (isCapturing.get() && allowsManual) {
                     handler?.post { captureFrame(forceKeep = true) }
                 }
@@ -171,6 +188,11 @@ class ScreenCaptureService : Service() {
             }
             ACTION_RESUME -> {
                 if (isCapturing.get()) resumeCapture()
+            }
+            ACTION_FOREGROUND -> {
+                if (!isCapturing.get()) return START_STICKY
+                val foreground = intent.getBooleanExtra(EXTRA_OWN_APP_FOREGROUND, false)
+                onOwnAppForegroundChanged(foreground)
             }
             ACTION_START -> startCapture(intent)
         }
@@ -256,6 +278,8 @@ class ScreenCaptureService : Service() {
         isCapturing.set(true)
         isPaused.set(false)
         timeWarningEmitted = false
+        ownAppSkipCount = 0
+        lastOwnAppEmitElapsed = 0L
         sessionDeadlineElapsed = SystemClock.elapsedRealtime() + maxDurationMs
         refreshChrome(0)
         CaptureEventBus.emit(
@@ -266,11 +290,27 @@ class ScreenCaptureService : Service() {
                 "captureMode" to captureMode,
                 "remainingSec" to (maxDurationMs / 1000L).toInt(),
                 "maxDurationSec" to (maxDurationMs / 1000L).toInt(),
+                "ownAppForeground" to AppForegroundTracker.isOwnAppForeground,
             ),
         )
 
         startTimerLoop(initialDelayMs = 600L)
         startSessionClock()
+        // Sync current foreground state (user may still be in UI Clone).
+        onOwnAppForegroundChanged(AppForegroundTracker.isOwnAppForeground)
+    }
+
+    private fun onOwnAppForegroundChanged(foreground: Boolean) {
+        AppForegroundTracker.setOwnAppForeground(foreground)
+        CaptureEventBus.emit(
+            mapOf(
+                "type" to "own_app_foreground",
+                "active" to foreground,
+                "count" to collectedPaths.size,
+                "ownAppSkipped" to ownAppSkipCount,
+            ),
+        )
+        refreshChrome(collectedPaths.size)
     }
 
     private fun startTimerLoop(initialDelayMs: Long = intervalMs) {
@@ -403,6 +443,22 @@ class ScreenCaptureService : Service() {
         if (!isCapturing.get() || isSaving.get()) return
         // Auto frames respect pause; forced manual shots do not.
         if (!forceKeep && isPaused.get()) return
+        // Never save frames of UI Clone itself (timer or manual).
+        if (AppForegroundTracker.isOwnAppForeground) {
+            ownAppSkipCount++
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastOwnAppEmitElapsed >= 1500L) {
+                lastOwnAppEmitElapsed = now
+                CaptureEventBus.emit(
+                    mapOf(
+                        "type" to "own_app_skipped",
+                        "ownAppSkipped" to ownAppSkipCount,
+                        "count" to collectedPaths.size,
+                    ),
+                )
+            }
+            return
+        }
         if (collectedPaths.size >= MAX_SHOTS) {
             finalizeCapture()
             stopSelf()
@@ -570,6 +626,7 @@ class ScreenCaptureService : Service() {
         )
 
         val paused = isPaused.get()
+        val ownFg = AppForegroundTracker.isOwnAppForeground
         val remainingSec = remainingSecNow()
         val nearLimit = remainingSec <= (warnBeforeMs / 1000L).toInt()
         val label = targetLabel?.let { " · $it" } ?: ""
@@ -577,11 +634,13 @@ class ScreenCaptureService : Service() {
         val skippedPart = if (skipped > 0) " · дублей пропущено: $skipped" else ""
         val timePart = " · осталось ${formatRemaining(remainingSec)}"
         val statusTitle = when {
+            ownFg -> "UI Clone: ждём целевое app$label"
             paused -> "UI Clone: пауза$label"
             nearLimit -> "UI Clone: скоро стоп$label"
             else -> "UI Clone: идёт сбор$label"
         }
         val modeHint = when {
+            ownFg -> " · откройте цель"
             paused -> " · «Далее» или Стоп"
             captureMode == "manual" -> " · «+ кадр» или Стоп"
             captureMode == "both" -> " · таймер + «+ кадр»"
