@@ -50,10 +50,11 @@ class AiAnalysisService {
     final baseUrl = (await settings.getBaseUrl()).replaceAll(RegExp(r'/$'), '');
     final model = await settings.getModel();
     final promptBody = await settings.getSystemPrompt();
+    final appName = _resolveAppName(targetLabel, targetPackage);
     final instruction = PromptTemplates.apply(
       body: promptBody,
-      app: targetLabel ?? targetPackage ?? 'unknown app',
-      package: targetPackage,
+      app: appName,
+      package: _nonEmpty(targetPackage),
       count: selected.length,
     );
     final textPrompt =
@@ -281,6 +282,18 @@ class AiAnalysisService {
     return picked;
   }
 
+  static String? _nonEmpty(String? value) {
+    final t = value?.trim();
+    if (t == null || t.isEmpty) return null;
+    return t;
+  }
+
+  static String _resolveAppName(String? targetLabel, String? targetPackage) {
+    return _nonEmpty(targetLabel) ??
+        _nonEmpty(targetPackage) ??
+        'целевое приложение';
+  }
+
   String _buildOfflinePrompt({
     required List<String> imagePaths,
     required String? targetLabel,
@@ -291,14 +304,16 @@ class AiAnalysisService {
         .map(p.basename)
         .take(AppConstants.maxImagesForAnalysis)
         .join(', ');
+    final appName = _resolveAppName(targetLabel, targetPackage);
+    final package = _nonEmpty(targetPackage);
     return '''
 # Промпт для клонирования UI
 
 > $reason
 
 Склонируй мобильный интерфейс приложения
-**${targetLabel ?? 'целевое приложение'}**
-${targetPackage != null ? '(`$targetPackage`)' : ''}.
+**$appName**
+${package != null ? '(`$package`)' : ''}.
 
 Собрано скриншотов: **${imagePaths.length}**.
 Файлы (выборка): $names

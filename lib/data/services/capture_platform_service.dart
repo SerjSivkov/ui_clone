@@ -144,6 +144,7 @@ sealed class CaptureEvent {
   factory CaptureEvent.started({
     required String sessionId,
     required String? targetLabel,
+    String? targetPackage,
     int? remainingSec,
     bool? usageAccessGranted,
   }) = CaptureStarted;
@@ -152,6 +153,8 @@ sealed class CaptureEvent {
     required String path,
     required int count,
     required int skipped,
+    String? foregroundPackage,
+    String? foregroundLabel,
   }) = CaptureScreenshotTaken;
 
   factory CaptureEvent.skipped({
@@ -199,6 +202,10 @@ sealed class CaptureEvent {
   factory CaptureEvent.stopped({
     required List<String> paths,
     required String reason,
+    String? targetPackage,
+    String? targetLabel,
+    String? foregroundPackage,
+    String? foregroundLabel,
   }) = CaptureStopped;
 
   factory CaptureEvent.error(String message) = CaptureError;
@@ -210,6 +217,7 @@ sealed class CaptureEvent {
         return CaptureStarted(
           sessionId: map['sessionId'] as String? ?? '',
           targetLabel: map['targetLabel'] as String?,
+          targetPackage: map['targetPackage'] as String?,
           remainingSec: (map['remainingSec'] as num?)?.toInt(),
           usageAccessGranted: map['usageAccessGranted'] as bool?,
         );
@@ -218,6 +226,8 @@ sealed class CaptureEvent {
           path: map['path'] as String? ?? '',
           count: (map['count'] as num?)?.toInt() ?? 0,
           skipped: (map['skipped'] as num?)?.toInt() ?? 0,
+          foregroundPackage: map['foregroundPackage'] as String?,
+          foregroundLabel: map['foregroundLabel'] as String?,
         );
       case 'skipped':
         return CaptureFrameSkipped(
@@ -269,6 +279,10 @@ sealed class CaptureEvent {
         return CaptureStopped(
           paths: paths,
           reason: map['reason'] as String? ?? 'user',
+          targetPackage: map['targetPackage'] as String?,
+          targetLabel: map['targetLabel'] as String?,
+          foregroundPackage: map['foregroundPackage'] as String?,
+          foregroundLabel: map['foregroundLabel'] as String?,
         );
       case 'error':
         return CaptureError(map['message'] as String? ?? 'Unknown error');
@@ -283,12 +297,14 @@ final class CaptureStarted extends CaptureEvent {
   const CaptureStarted({
     required this.sessionId,
     required this.targetLabel,
+    this.targetPackage,
     this.remainingSec,
     this.usageAccessGranted,
   });
 
   final String sessionId;
   final String? targetLabel;
+  final String? targetPackage;
   final int? remainingSec;
   final bool? usageAccessGranted;
 }
@@ -298,11 +314,15 @@ final class CaptureScreenshotTaken extends CaptureEvent {
     required this.path,
     required this.count,
     this.skipped = 0,
+    this.foregroundPackage,
+    this.foregroundLabel,
   });
 
   final String path;
   final int count;
   final int skipped;
+  final String? foregroundPackage;
+  final String? foregroundLabel;
 }
 
 final class CaptureFrameSkipped extends CaptureEvent {
@@ -387,10 +407,18 @@ final class CaptureStopped extends CaptureEvent {
   const CaptureStopped({
     required this.paths,
     this.reason = 'user',
+    this.targetPackage,
+    this.targetLabel,
+    this.foregroundPackage,
+    this.foregroundLabel,
   });
 
   final List<String> paths;
   final String reason;
+  final String? targetPackage;
+  final String? targetLabel;
+  final String? foregroundPackage;
+  final String? foregroundLabel;
 }
 
 final class CaptureError extends CaptureEvent {

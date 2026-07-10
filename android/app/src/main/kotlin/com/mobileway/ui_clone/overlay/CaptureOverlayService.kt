@@ -6,7 +6,9 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -68,6 +70,21 @@ class CaptureOverlayService : Service() {
         ) {
             show(context, count, showShotButton = showShotButton, paused = paused)
         }
+
+        /** Hide overlay while MediaProjection grabs a frame (avoids panel in shots). */
+        fun setHiddenForCapture(hidden: Boolean) {
+            val svc = instance ?: return
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                svc.applyHiddenForCapture(hidden)
+            } else {
+                Handler(Looper.getMainLooper()).post {
+                    instance?.applyHiddenForCapture(hidden)
+                }
+            }
+        }
+
+        @Volatile
+        private var instance: CaptureOverlayService? = null
     }
 
     private var windowManager: WindowManager? = null
@@ -76,11 +93,54 @@ class CaptureOverlayService : Service() {
     private var countView: TextView? = null
     private var shotButton: ImageView? = null
     private var pauseButton: ImageView? = null
+    private var hiddenForCapture = false
+    private var baseLayoutFlags = 0
+    private var attachedToWm = false
 
     private val prefs: SharedPreferences
         get() = getSharedPreferences(PREFS, MODE_PRIVATE)
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
+    private fun applyHiddenForCapture(hidden: Boolean) {
+        hiddenForCapture = hidden
+        val view = overlayView ?: return
+        val params = layoutParams ?: return
+        val wm = windowManager ?: return
+        if (hidden) {
+            // Detach from WindowManager so MediaProjection recomposes without the panel.
+            // Alpha-only leave a stale ImageReader buffer and often no new frame on a
+            // static screen — acquireLatestImage() then returns null.
+            if (attachedToWm) {
+                try {
+                    wm.removeView(view)
+                } catch (_: Exception) {
+                }
+                attachedToWm = false
+            }
+        } else {
+            view.alpha = 1f
+            view.visibility = View.VISIBLE
+            params.flags = baseLayoutFlags
+            if (!attachedToWm) {
+                try {
+                    wm.addView(view, params)
+                    attachedToWm = true
+                } catch (_: Exception) {
+                }
+            } else {
+                try {
+                    wm.updateViewLayout(view, params)
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -103,6 +163,11 @@ class CaptureOverlayService : Service() {
                         btn.setImageResource(R.drawable.ic_overlay_pause)
                         btn.contentDescription = getString(R.string.overlay_pause)
                     }
+                }
+                // refreshChrome may run while a frame grab has the panel hidden —
+                // keep alpha / NOT_TOUCHABLE in sync.
+                if (hiddenForCapture) {
+                    applyHiddenForCapture(true)
                 }
             }
         }
@@ -164,6 +229,7 @@ class CaptureOverlayService : Service() {
                 y = (180 * metrics.density).toInt()
             }
         }
+        baseLayoutFlags = params.flags
 
         attachDrag(dragHandle, view, params)
         // Also allow dragging from the counter label.
@@ -172,6 +238,10 @@ class CaptureOverlayService : Service() {
         windowManager?.addView(view, params)
         overlayView = view
         layoutParams = params
+        attachedToWm = true
+        if (hiddenForCapture) {
+            applyHiddenForCapture(true)
+        }
     }
 
     private fun attachDrag(
@@ -239,9 +309,14 @@ class CaptureOverlayService : Service() {
         countView = null
         shotButton = null
         pauseButton = null
+        attachedToWm = false
+        hiddenForCapture = false
     }
 
     override fun onDestroy() {
+        if (instance === this) {
+            instance = null
+        }
         removeOverlay()
         super.onDestroy()
     }

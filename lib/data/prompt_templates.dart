@@ -40,19 +40,25 @@ abstract final class PromptTemplates {
   static bool isKnownId(String id) => all.any((t) => t.id == id);
 
   /// Replaces `{{app}}`, `{{package}}`, `{{count}}` in [body].
+  /// Also accepts single-brace `{app}` / `{package}` / `{count}` variants.
   static String apply({
     required String body,
     required String app,
     String? package,
     required int count,
   }) {
-    final packageLine = package == null || package.isEmpty
+    final appName = app.trim().isEmpty ? 'целевое приложение' : app.trim();
+    final packageLine = package == null || package.trim().isEmpty
         ? ''
-        : '(package: $package)';
+        : '(package: ${package.trim()})';
+    final countStr = '$count';
     return body
-        .replaceAll('{{app}}', app)
+        .replaceAll('{{app}}', appName)
         .replaceAll('{{package}}', packageLine)
-        .replaceAll('{{count}}', '$count');
+        .replaceAll('{{count}}', countStr)
+        .replaceAll('{app}', appName)
+        .replaceAll('{package}', packageLine)
+        .replaceAll('{count}', countStr);
   }
 
   static const String _flutterBody = '''

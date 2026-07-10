@@ -60,6 +60,10 @@ class ScreenCaptureService : Service() {
         private const val MAX_SHOTS = 40
         private const val DEFAULT_MAX_DURATION_MS = 300_000L
         private const val DEFAULT_WARN_BEFORE_MS = 30_000L
+        /** Delay after detaching overlay before grabbing a frame. */
+        private const val OVERLAY_HIDE_MS = 120L
+        /** Extra time to wait for a VirtualDisplay frame after overlay detach. */
+        private const val FRAME_POLL_MS = 280L
 
         @Volatile
         private var instance: ScreenCaptureService? = null
@@ -269,7 +273,7 @@ class ScreenCaptureService : Service() {
             handler,
         )
 
-        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3)
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "ui_clone-vd",
             width,
@@ -540,11 +544,55 @@ class ScreenCaptureService : Service() {
             return
         }
 
+        if (!isSaving.compareAndSet(false, true)) return
+
+        // Hide floating controls so MediaProjection does not bake them into the shot.
+        // Overlay WindowManager updates must run on the main thread; otherwise the
+        // panel can reappear visually but stop receiving touches, and isSaving can stick.
+        val captureHandler = handler
+        if (captureHandler == null) {
+            isSaving.set(false)
+            return
+        }
+        Handler(Looper.getMainLooper()).post {
+            if (!isCapturing.get()) {
+                isSaving.set(false)
+                return@post
+            }
+            try {
+                CaptureOverlayService.setHiddenForCapture(true)
+            } catch (_: Exception) {
+                isSaving.set(false)
+                return@post
+            }
+            captureHandler.postDelayed({
+                try {
+                    grabFrameAfterOverlayHidden(forceKeep)
+                } finally {
+                    Handler(Looper.getMainLooper()).post {
+                        CaptureOverlayService.setHiddenForCapture(false)
+                    }
+                    isSaving.set(false)
+                }
+            }, OVERLAY_HIDE_MS)
+        }
+    }
+
+    private fun grabFrameAfterOverlayHidden(forceKeep: Boolean) {
+        if (!isCapturing.get()) return
         val reader = imageReader ?: return
         var image: Image? = null
         try {
-            image = reader.acquireLatestImage() ?: return
-            isSaving.set(true)
+            image = acquireImageAfterOverlayHide(reader)
+            if (image == null) {
+                CaptureEventBus.emit(
+                    mapOf(
+                        "type" to "error",
+                        "message" to "Не удалось получить кадр экрана",
+                    ),
+                )
+                return
+            }
             val plane = image.planes[0]
             val buffer = plane.buffer
             val pixelStride = plane.pixelStride
@@ -574,6 +622,13 @@ class ScreenCaptureService : Service() {
                 similarityGate.remember(cropped)
             }
 
+            val fgPackage = lastKnownForegroundPackage
+                ?: ForegroundAppHelper.currentForegroundPackage(this)
+            if (!fgPackage.isNullOrBlank()) {
+                lastKnownForegroundPackage = fgPackage
+            }
+            val fgLabel = fgPackage?.let { ForegroundAppHelper.labelForPackage(this, it) }
+
             val dir = File(cacheDir, "captures/$sessionId").apply { mkdirs() }
             val file = File(dir, "shot_${System.currentTimeMillis()}.jpg")
             FileOutputStream(file).use { out ->
@@ -591,6 +646,8 @@ class ScreenCaptureService : Service() {
                     "count" to count,
                     "skipped" to similarityGate.skippedCount(),
                     "manual" to forceKeep,
+                    "foregroundPackage" to fgPackage,
+                    "foregroundLabel" to fgLabel,
                 ),
             )
         } catch (e: Exception) {
@@ -599,7 +656,37 @@ class ScreenCaptureService : Service() {
             )
         } finally {
             image?.close()
-            isSaving.set(false)
+        }
+    }
+
+    /**
+     * VirtualDisplay often does not push a new ImageReader frame on a static
+     * screen. Never discard the only buffer and return empty — keep polling for
+     * a newer frame, then fall back to the latest available image.
+     */
+    private fun acquireImageAfterOverlayHide(reader: ImageReader): Image? {
+        val deadline = SystemClock.elapsedRealtime() + FRAME_POLL_MS
+        var latest: Image? = null
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val next = try {
+                reader.acquireLatestImage()
+            } catch (_: Exception) {
+                null
+            }
+            if (next != null) {
+                latest?.close()
+                latest = next
+                // Keep scanning briefly for a frame composed after overlay detach.
+                SystemClock.sleep(32L)
+            } else {
+                SystemClock.sleep(16L)
+            }
+        }
+        if (latest != null) return latest
+        return try {
+            reader.acquireLatestImage()
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -630,12 +717,19 @@ class ScreenCaptureService : Service() {
         }
         mediaProjection = null
 
+        CaptureOverlayService.setHiddenForCapture(false)
         CaptureOverlayService.hide(this)
+        val fgPackage = lastKnownForegroundPackage
+        val fgLabel = fgPackage?.let { ForegroundAppHelper.labelForPackage(this, it) }
         CaptureEventBus.emit(
             mapOf(
                 "type" to "stopped",
                 "paths" to collectedPaths.toList(),
                 "reason" to stopReason,
+                "targetPackage" to targetPackage,
+                "targetLabel" to targetLabel,
+                "foregroundPackage" to fgPackage,
+                "foregroundLabel" to fgLabel,
             ),
         )
 

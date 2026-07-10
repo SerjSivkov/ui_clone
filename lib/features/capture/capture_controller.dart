@@ -59,6 +59,20 @@ class CaptureController extends StateNotifier<CaptureSession> {
   int _generation = 0;
   int _activeGeneration = 0;
 
+  /// Locked at [start] so analyze still has app name if state flickers.
+  String? _sessionTargetPackage;
+  String? _sessionTargetLabel;
+
+  /// Inferred from frames when capture started without an explicit target.
+  String? _inferredPackage;
+  String? _inferredLabel;
+
+  static String? _nonEmpty(String? value) {
+    final t = value?.trim();
+    if (t == null || t.isEmpty) return null;
+    return t;
+  }
+
   Future<void> _init() async {
     await _repo.initialize();
     if (_disposed) return;
@@ -77,6 +91,7 @@ class CaptureController extends StateNotifier<CaptureSession> {
       case CaptureStarted(
           :final sessionId,
           :final targetLabel,
+          :final targetPackage,
           :final remainingSec,
           :final usageAccessGranted,
         ):
@@ -85,9 +100,14 @@ class CaptureController extends StateNotifier<CaptureSession> {
             state.status != CaptureStatus.capturing) {
           return;
         }
+        final pkg = _nonEmpty(targetPackage) ?? _sessionTargetPackage;
+        final label = _nonEmpty(targetLabel) ?? _sessionTargetLabel;
+        if (pkg != null) _sessionTargetPackage = pkg;
+        if (label != null) _sessionTargetLabel = label;
         state = state.copyWith(
           id: sessionId.isNotEmpty ? sessionId : state.id,
-          targetLabel: targetLabel ?? state.targetLabel,
+          targetPackage: pkg ?? state.targetPackage,
+          targetLabel: label ?? state.targetLabel,
           status: CaptureStatus.capturing,
           remainingSec: remainingSec ?? state.remainingSec,
           timeLimitWarning: false,
@@ -96,14 +116,23 @@ class CaptureController extends StateNotifier<CaptureSession> {
           targetMismatch: false,
           currentForegroundLabel: null,
         );
-      case CaptureScreenshotTaken(:final path, :final count, :final skipped):
+      case CaptureScreenshotTaken(
+          :final path,
+          :final count,
+          :final skipped,
+          :final foregroundPackage,
+          :final foregroundLabel,
+        ):
         if (_activeGeneration != _generation) return;
+        _rememberForeground(foregroundPackage, foregroundLabel);
         if (_captureClosed) {
           // Still accept late paths while finishing, never reopen capture.
           if (path.isNotEmpty && !state.screenshotPaths.contains(path)) {
             state = state.copyWith(
               screenshotPaths: [...state.screenshotPaths, path],
               skippedDuplicates: skipped,
+              targetPackage: state.targetPackage ?? _resolvedPackage(),
+              targetLabel: state.targetLabel ?? _resolvedLabel(),
             );
           }
           return;
@@ -121,6 +150,8 @@ class CaptureController extends StateNotifier<CaptureSession> {
           skippedDuplicates: skipped,
           targetMismatch: false,
           currentForegroundLabel: null,
+          targetPackage: state.targetPackage ?? _resolvedPackage(),
+          targetLabel: state.targetLabel ?? _resolvedLabel(),
         );
         log('Screenshot #$count → $path (skipped=$skipped)');
       case CaptureFrameSkipped(:final skipped):
@@ -199,9 +230,26 @@ class CaptureController extends StateNotifier<CaptureSession> {
           targetMismatch: false,
           currentForegroundLabel: null,
         );
-      case CaptureStopped(:final paths):
+      case CaptureStopped(
+          :final paths,
+          :final targetPackage,
+          :final targetLabel,
+          :final foregroundPackage,
+          :final foregroundLabel,
+        ):
         if (_activeGeneration != _generation) return;
         if (_captureClosed) return;
+        _rememberForeground(foregroundPackage, foregroundLabel);
+        final pkg = _nonEmpty(targetPackage);
+        final label = _nonEmpty(targetLabel);
+        if (pkg != null) _sessionTargetPackage ??= pkg;
+        if (label != null) _sessionTargetLabel ??= label;
+        if (state.targetPackage == null || state.targetLabel == null) {
+          state = state.copyWith(
+            targetPackage: state.targetPackage ?? _resolvedPackage(),
+            targetLabel: state.targetLabel ?? _resolvedLabel(),
+          );
+        }
         // External stop (notification / overlay / time limit).
         _generation++;
         _activeGeneration = _generation;
@@ -225,11 +273,16 @@ class CaptureController extends StateNotifier<CaptureSession> {
     final generation = _generation;
     _activeGeneration = generation;
 
+    _sessionTargetPackage = _nonEmpty(target?.packageName);
+    _sessionTargetLabel = _nonEmpty(target?.label);
+    _inferredPackage = null;
+    _inferredLabel = null;
+
     state = CaptureSession(
       id: '',
       status: CaptureStatus.requestingPermission,
-      targetPackage: target?.packageName,
-      targetLabel: target?.label,
+      targetPackage: _sessionTargetPackage,
+      targetLabel: _sessionTargetLabel,
       startedAt: DateTime.now(),
       skippedDuplicates: 0,
       remainingSec: null,
@@ -249,8 +302,8 @@ class CaptureController extends StateNotifier<CaptureSession> {
         return;
       }
       state = session.copyWith(
-        targetPackage: target?.packageName ?? session.targetPackage,
-        targetLabel: target?.label ?? session.targetLabel,
+        targetPackage: _sessionTargetPackage ?? session.targetPackage,
+        targetLabel: _sessionTargetLabel ?? session.targetLabel,
       );
     } catch (e, st) {
       log('startCapture failed', error: e, stackTrace: st);
@@ -338,6 +391,8 @@ class CaptureController extends StateNotifier<CaptureSession> {
     state = state.copyWith(
       screenshotPaths: merged,
       status: CaptureStatus.stopping,
+      targetPackage: state.targetPackage ?? _resolvedPackage(),
+      targetLabel: state.targetLabel ?? _resolvedLabel(),
     );
     await Future<void>.delayed(Duration.zero);
     if (generation != _generation) return;
@@ -356,11 +411,14 @@ class CaptureController extends StateNotifier<CaptureSession> {
     await Future<void>.delayed(Duration.zero);
     if (generation != _generation) return;
 
+    final label = _resolvedLabel();
+    final package = _resolvedPackage();
+
     try {
       final result = await _repo.analyze(
         paths: merged,
-        targetLabel: state.targetLabel,
-        targetPackage: state.targetPackage,
+        targetLabel: label,
+        targetPackage: package,
       );
       if (generation != _generation || _disposed) return;
       state = state.copyWith(
@@ -368,6 +426,8 @@ class CaptureController extends StateNotifier<CaptureSession> {
         structuredJson: result.structuredJson,
         status: CaptureStatus.completed,
         finishedAt: DateTime.now(),
+        targetLabel: label ?? state.targetLabel,
+        targetPackage: package ?? state.targetPackage,
       );
     } catch (e, st) {
       log('analyze failed', error: e, stackTrace: st);
@@ -380,9 +440,31 @@ class CaptureController extends StateNotifier<CaptureSession> {
     }
   }
 
+  void _rememberForeground(String? package, String? label) {
+    final pkg = _nonEmpty(package);
+    final name = _nonEmpty(label);
+    if (pkg != null) _inferredPackage = pkg;
+    if (name != null) _inferredLabel = name;
+  }
+
+  String? _resolvedPackage() =>
+      _nonEmpty(_sessionTargetPackage) ??
+      _nonEmpty(state.targetPackage) ??
+      _nonEmpty(_inferredPackage);
+
+  String? _resolvedLabel() =>
+      _nonEmpty(_sessionTargetLabel) ??
+      _nonEmpty(state.targetLabel) ??
+      _nonEmpty(_inferredLabel) ??
+      _resolvedPackage();
+
   void reset() {
     _generation++;
     _activeGeneration = _generation;
+    _sessionTargetPackage = null;
+    _sessionTargetLabel = null;
+    _inferredPackage = null;
+    _inferredLabel = null;
     state = const CaptureSession(id: '', status: CaptureStatus.idle);
   }
 
