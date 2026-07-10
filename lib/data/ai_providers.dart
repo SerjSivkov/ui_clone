@@ -4,6 +4,9 @@ enum AiProviderId {
   anthropic,
   gemini,
   openaiCompatible,
+
+  /// On-device heuristics only — screenshots never leave the device.
+  local,
 }
 
 class AiProviderPreset {
@@ -14,6 +17,8 @@ class AiProviderPreset {
     required this.defaultModel,
     required this.baseUrlEditable,
     required this.hint,
+    this.requiresApiKey = true,
+    this.uploadsScreenshots = true,
   });
 
   final AiProviderId id;
@@ -22,6 +27,12 @@ class AiProviderPreset {
   final String defaultModel;
   final bool baseUrlEditable;
   final String hint;
+
+  /// When false, API key / Base URL / model fields are hidden in settings.
+  final bool requiresApiKey;
+
+  /// When false, analysis must not send images to any network endpoint.
+  final bool uploadsScreenshots;
 }
 
 abstract final class AiProviders {
@@ -29,6 +40,7 @@ abstract final class AiProviders {
   static const String anthropic = 'anthropic';
   static const String gemini = 'gemini';
   static const String openaiCompatible = 'openai_compatible';
+  static const String local = 'local';
 
   static const String defaultId = openai;
 
@@ -65,7 +77,22 @@ abstract final class AiProviders {
       defaultBaseUrl: 'https://api.openai.com/v1',
       defaultModel: 'gpt-4o-mini',
       baseUrlEditable: true,
-      hint: 'Любой endpoint с /chat/completions (OpenRouter, локальный proxy…).',
+      hint:
+          'Любой endpoint с /chat/completions (OpenRouter, Ollama, '
+          'LM Studio, локальный PocketForge-сервер…).',
+    ),
+    AiProviderPreset(
+      id: AiProviderId.local,
+      title: 'Локально (без облака)',
+      defaultBaseUrl: '',
+      defaultModel: 'on-device-palette',
+      baseUrlEditable: false,
+      requiresApiKey: false,
+      uploadsScreenshots: false,
+      hint:
+          'Скриншоты не уходят в сеть. Палитра HEX и черновик промпта '
+          'собираются на устройстве. Полноценный on-device LLM '
+          '(Gemma / PocketForge в APK) — отдельный эпик.',
     ),
   ];
 
@@ -79,6 +106,7 @@ abstract final class AiProviders {
       anthropic => AiProviderId.anthropic,
       gemini => AiProviderId.gemini,
       openaiCompatible => AiProviderId.openaiCompatible,
+      local => AiProviderId.local,
       _ => AiProviderId.openai,
     };
   }
@@ -89,6 +117,7 @@ abstract final class AiProviders {
       AiProviderId.anthropic => anthropic,
       AiProviderId.gemini => gemini,
       AiProviderId.openaiCompatible => openaiCompatible,
+      AiProviderId.local => local,
     };
   }
 
@@ -96,5 +125,6 @@ abstract final class AiProviders {
       id == openai ||
       id == anthropic ||
       id == gemini ||
-      id == openaiCompatible;
+      id == openaiCompatible ||
+      id == local;
 }

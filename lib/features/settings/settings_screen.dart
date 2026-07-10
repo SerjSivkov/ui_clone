@@ -168,8 +168,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Выберите провайдера vision-модели. Без ключа приложение '
-                  'соберёт офлайн-шаблон промпта по скриншотам.',
+                  provider.uploadsScreenshots
+                      ? 'Выберите провайдера vision-модели. Без ключа '
+                          'приложение соберёт офлайн-шаблон промпта по '
+                          'скриншотам.'
+                      : 'Локальный режим: скриншоты остаются на устройстве. '
+                          'Палитра HEX извлекается эвристикой; для LLM '
+                          'vision используйте облако или OpenAI-compatible '
+                          'к локальному серверу.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: AppColors.slate,
                       ),
@@ -197,85 +203,108 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         color: AppColors.slate,
                       ),
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _apiKeyCtrl,
-                  obscureText: _obscure,
-                  textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(
-                    labelText: 'API key',
-                    suffixIcon: IconButton(
-                      onPressed: () => setState(() => _obscure = !_obscure),
-                      icon: Icon(
-                        _obscure
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
+                if (!provider.uploadsScreenshots) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F4F4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.accent),
+                    ),
+                    child: Text(
+                      'Приватность: кадры не загружаются на внешние API.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppColors.accentDeep,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                ],
+                if (provider.requiresApiKey) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _apiKeyCtrl,
+                    obscureText: _obscure,
+                    textInputAction: TextInputAction.next,
+                    decoration: InputDecoration(
+                      labelText: 'API key',
+                      suffixIcon: IconButton(
+                        onPressed: () => setState(() => _obscure = !_obscure),
+                        icon: Icon(
+                          _obscure
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _baseUrlCtrl,
-                  enabled: provider.baseUrlEditable,
-                  keyboardType: TextInputType.url,
-                  textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(
-                    labelText: 'Base URL',
-                    hintText: provider.defaultBaseUrl,
-                    helperText: provider.baseUrlEditable
-                        ? (provider.id == AiProviderId.anthropic
-                            ? 'По умолчанию api.anthropic.com; можно указать прокси'
-                            : 'Для OpenAI-compatible / Anthropic можно указать свой endpoint')
-                        : 'URL задаётся провайдером',
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _baseUrlCtrl,
+                    enabled: provider.baseUrlEditable,
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.next,
+                    decoration: InputDecoration(
+                      labelText: 'Base URL',
+                      hintText: provider.defaultBaseUrl,
+                      helperText: provider.baseUrlEditable
+                          ? (provider.id == AiProviderId.anthropic
+                              ? 'По умолчанию api.anthropic.com; можно указать прокси'
+                              : 'Для OpenAI-compatible / Anthropic можно указать свой endpoint')
+                          : 'URL задаётся провайдером',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _modelCtrl,
-                  textInputAction: TextInputAction.done,
-                  decoration: InputDecoration(
-                    labelText: 'Модель',
-                    hintText: provider.defaultModel,
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _modelCtrl,
+                    textInputAction: TextInputAction.done,
+                    decoration: InputDecoration(
+                      labelText: 'Модель',
+                      hintText: provider.defaultModel,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Сжатие перед upload: качество ${_jpegQuality.round()}%',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                Text(
-                  'Меньше — быстрее и дешевле по токенам; больше — детальнее.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.slate,
-                      ),
-                ),
-                Slider(
-                  value: _jpegQuality,
-                  min: 40,
-                  max: 95,
-                  divisions: 11,
-                  label: '${_jpegQuality.round()}%',
-                  onChanged: (v) => setState(() => _jpegQuality = v),
-                ),
-                Text(
-                  'Макс. сторона: ${_jpegMaxSide.round()} px',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                Text(
-                  'Длинная сторона кадра ограничивается перед отправкой в API.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.slate,
-                      ),
-                ),
-                Slider(
-                  value: _jpegMaxSide,
-                  min: 512,
-                  max: 2048,
-                  divisions: 12,
-                  label: '${_jpegMaxSide.round()} px',
-                  onChanged: (v) => setState(() => _jpegMaxSide = v),
-                ),
+                ],
+                if (provider.uploadsScreenshots) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'Сжатие перед upload: качество ${_jpegQuality.round()}%',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  Text(
+                    'Меньше — быстрее и дешевле по токенам; больше — детальнее.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.slate,
+                        ),
+                  ),
+                  Slider(
+                    value: _jpegQuality,
+                    min: 40,
+                    max: 95,
+                    divisions: 11,
+                    label: '${_jpegQuality.round()}%',
+                    onChanged: (v) => setState(() => _jpegQuality = v),
+                  ),
+                  Text(
+                    'Макс. сторона: ${_jpegMaxSide.round()} px',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  Text(
+                    'Длинная сторона кадра ограничивается перед отправкой в API.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.slate,
+                        ),
+                  ),
+                  Slider(
+                    value: _jpegMaxSide,
+                    min: 512,
+                    max: 2048,
+                    divisions: 12,
+                    label: '${_jpegMaxSide.round()} px',
+                    onChanged: (v) => setState(() => _jpegMaxSide = v),
+                  ),
+                ],
                 const SizedBox(height: 28),
                 Text(
                   'Промпт',

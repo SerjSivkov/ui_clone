@@ -52,8 +52,9 @@
 
 ## Настройки
 
-- Провайдер vision: OpenAI · Anthropic · Gemini · OpenAI-compatible.
-- API key (secure storage).
+- Провайдер vision: OpenAI · Anthropic · Gemini · OpenAI-compatible ·
+  **Локально (без облака)** (палитра HEX на устройстве, без upload).
+- API key (secure storage) — не нужен в локальном режиме.
 - Base URL (редактируется для Anthropic и OpenAI-compatible) и имя модели.
 - Сжатие JPEG перед upload: качество (40–95%) и max side (512–2048 px).
 - Системный промпт: шаблоны Flutter / React Native / Figma / общий UX,

@@ -13,6 +13,7 @@ import '../models/ui_clone_analysis.dart';
 import '../prompt_templates.dart';
 import 'analysis_response_parser.dart';
 import 'jpeg_compress.dart';
+import 'local_palette.dart';
 import 'settings_service.dart';
 
 typedef AnalysisProgressCallback = void Function(AnalysisProgress progress);
@@ -36,13 +37,26 @@ class AiAnalysisService {
     final startedAt = DateTime.now();
     void emit(AnalysisProgress progress) => onProgress?.call(progress);
 
+    final providerId = AiProviders.parseId(await settings.getAiProviderId());
+    if (providerId == AiProviderId.local) {
+      return _analyzeLocally(
+        imagePaths: imagePaths,
+        targetLabel: targetLabel,
+        targetPackage: targetPackage,
+        cancelToken: cancelToken,
+        emit: emit,
+        startedAt: startedAt,
+      );
+    }
+
     final apiKey = await settings.getApiKey();
     if (apiKey == null || apiKey.isEmpty) {
       emit(
         AnalysisProgress(
           phase: AnalysisPhase.waiting,
           imagesDone: 0,
-          imagesTotal: imagePaths.length.clamp(0, AppConstants.maxImagesForAnalysis),
+          imagesTotal:
+              imagePaths.length.clamp(0, AppConstants.maxImagesForAnalysis),
           fraction: 1,
           etaSec: 0,
         ),
@@ -74,7 +88,6 @@ class AiAnalysisService {
       ),
     );
 
-    final providerId = AiProviders.parseId(await settings.getAiProviderId());
     final baseUrl = (await settings.getBaseUrl()).replaceAll(RegExp(r'/$'), '');
     final model = await settings.getModel();
     final promptBody = await settings.getSystemPrompt();
@@ -193,6 +206,8 @@ class AiAnalysisService {
               );
             },
           ),
+        AiProviderId.local =>
+          throw StateError('Local provider must use on-device path'),
       };
       if (text.trim().isEmpty) {
         throw StateError('Пустой ответ модели');
@@ -283,6 +298,203 @@ class AiAnalysisService {
     if (token.isCancelled) {
       throw const AnalysisCancelledException();
     }
+  }
+
+  /// On-device path: dominant colors + draft prompt. No network I/O.
+  Future<AnalysisResult> _analyzeLocally({
+    required List<String> imagePaths,
+    required String? targetLabel,
+    required String? targetPackage,
+    required CancelToken? cancelToken,
+    required AnalysisProgressCallback emit,
+    required DateTime startedAt,
+  }) async {
+    final selected = _pickRepresentative(imagePaths);
+    if (selected.isEmpty) {
+      throw StateError('Нет скриншотов для анализа');
+    }
+
+    final total = selected.length;
+    emit(
+      AnalysisProgress(
+        phase: AnalysisPhase.preparing,
+        imagesDone: 0,
+        imagesTotal: total,
+        fraction: 0.05,
+        etaSec: total,
+      ),
+    );
+
+    final collected = <DominantColor>[];
+    for (var i = 0; i < selected.length; i++) {
+      _throwIfCancelled(cancelToken);
+      final bytes = await File(selected[i]).readAsBytes();
+      final colors = await compute(
+        extractDominantColors,
+        DominantColorArgs(bytes: bytes, maxColors: 5),
+      );
+      collected.addAll(colors);
+
+      final done = i + 1;
+      final elapsedMs =
+          DateTime.now().difference(startedAt).inMilliseconds.clamp(1, 1 << 30);
+      final perImageMs = elapsedMs / done;
+      final remain = ((total - done) * perImageMs / 1000).ceil();
+      emit(
+        AnalysisProgress(
+          phase: AnalysisPhase.preparing,
+          imagesDone: done,
+          imagesTotal: total,
+          fraction: 0.1 + 0.75 * (done / total),
+          etaSec: remain,
+        ),
+      );
+    }
+
+    _throwIfCancelled(cancelToken);
+    emit(
+      AnalysisProgress(
+        phase: AnalysisPhase.waiting,
+        imagesDone: total,
+        imagesTotal: total,
+        fraction: 0.92,
+        etaSec: 1,
+      ),
+    );
+
+    final merged = mergeDominantColors(collected, maxColors: 8);
+    final paletteNames = [
+      'primary',
+      'secondary',
+      'surface',
+      'accent',
+      'muted',
+      'highlight',
+      'border',
+      'text',
+    ];
+    final palette = <UiCloneColorToken>[
+      for (var i = 0; i < merged.length; i++)
+        UiCloneColorToken(
+          name: i < paletteNames.length ? paletteNames[i] : 'color_${i + 1}',
+          hex: merged[i].hex,
+        ),
+    ];
+
+    final screens = <UiCloneScreenSpec>[
+      for (var i = 0; i < selected.length; i++)
+        UiCloneScreenSpec(
+          name: 'Экран ${i + 1}',
+          layout:
+              'Кадр `${p.basename(selected[i])}`. Уточните блоки сверху вниз '
+              'по скриншоту (локальный режим не распознаёт layout через LLM).',
+          functions: const [],
+        ),
+    ];
+
+    const components = <UiCloneComponentSpec>[
+      UiCloneComponentSpec(
+        name: 'PrimaryButton',
+        description:
+            'Основная CTA — сверьте цвет с primary из палитры, высота ≥ 44.',
+      ),
+      UiCloneComponentSpec(
+        name: 'AppBar / Header',
+        description: 'Верхняя панель — типографика и фон по скриншотам.',
+      ),
+      UiCloneComponentSpec(
+        name: 'List / Content',
+        description: 'Основной контент — отступы и плотность по кадрам.',
+      ),
+    ];
+
+    final appName = _resolveAppName(targetLabel, targetPackage);
+    final package = _nonEmpty(targetPackage);
+    final promptBody = await settings.getSystemPrompt();
+    final instruction = PromptTemplates.apply(
+      body: promptBody,
+      app: appName,
+      package: package,
+      count: selected.length,
+    );
+
+    final paletteMd = palette.isEmpty
+        ? '- (не удалось извлечь цвета)'
+        : [
+            for (final c in palette) '- **${c.name}**: `${c.hex}`',
+          ].join('\n');
+
+    final screensMd = [
+      for (final s in screens) '### ${s.name}\n${s.layout}',
+    ].join('\n\n');
+
+    final markdown = '''
+# Локальный черновик промпта (без облака)
+
+> Скриншоты **не отправлялись** в сеть. Палитра собрана эвристикой на
+> устройстве. Для точного UX-описания выберите облачный vision или
+> OpenAI-compatible к локальному серверу (Ollama / PocketForge).
+
+$instruction
+
+## Извлечённая палитра
+$paletteMd
+
+## Экраны (по кадрам)
+$screensMd
+
+## Компоненты (черновик)
+${[
+      for (final c in components) '- **${c.name}**: ${c.description}',
+    ].join('\n')}
+
+## Дальше
+1. Сверьте HEX с скриншотами и поправьте токены.
+2. Опишите layout каждого экрана вручную или повторите анализ в облаке.
+3. Не копируйте чужие логотипы и пользовательский контент.
+''';
+
+    final analysis = UiCloneAnalysis(
+      palette: palette,
+      screens: screens,
+      components: components,
+      markdown: markdown.trim(),
+    );
+    final pretty = const JsonEncoder.withIndent('  ').convert({
+      'palette': [
+        for (final c in palette) {'name': c.name, 'hex': c.hex},
+      ],
+      'screens': [
+        for (final s in screens)
+          {
+            'name': s.name,
+            'layout': s.layout,
+            'functions': s.functions,
+          },
+      ],
+      'components': [
+        for (final c in components)
+          {'name': c.name, 'description': c.description},
+      ],
+      'markdown': analysis.markdown,
+      'mode': 'local_on_device',
+    });
+
+    emit(
+      AnalysisProgress(
+        phase: AnalysisPhase.waiting,
+        imagesDone: total,
+        imagesTotal: total,
+        fraction: 1,
+        etaSec: 0,
+      ),
+    );
+
+    return AnalysisResult(
+      markdown: analysis.markdown,
+      structuredJson: pretty,
+      structured: analysis,
+    );
   }
 
   Future<String> _callOpenAiCompatible({
