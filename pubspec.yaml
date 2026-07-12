@@ -30,6 +30,7 @@ dependencies:
   intl: ^0.20.2
   package_info_plus: ^9.0.1
   url_launcher: ^6.3.2
+  http: ^1.2.0
   image: ^4.9.1
 
 dev_dependencies:

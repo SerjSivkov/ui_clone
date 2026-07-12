@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../utils/update_checker.dart';
+import '../../widgets/update_dialog.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -54,6 +57,47 @@ class _AboutScreenState extends State<AboutScreen> {
       MaterialPageRoute<void>(
         builder: (_) => _LegalTextScreen(title: title, body: text),
       ),
+    );
+  }
+
+  Future<void> _checkUpdate() async {
+    final messenger = ScaffoldMessenger.of(context);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Проверка обновлений…'),
+          ],
+        ),
+      ),
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    final result = await checkForUpdateWithCache(prefs, ignoreCache: true);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+
+    if (result.hasError) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Не удалось проверить обновления')),
+      );
+      return;
+    }
+
+    if (result.info == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Установлена последняя версия')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (_) => UpdateDialog(update: result.info!),
     );
   }
 
@@ -180,15 +224,26 @@ class _AboutScreenState extends State<AboutScreen> {
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(color: AppColors.mist),
             ),
-            child: ListTile(
-              leading: const Icon(Icons.code_rounded),
-              title: const Text('Проект на GitHub'),
-              subtitle: Text(
-                AppConstants.githubUrl.replaceFirst('https://', ''),
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              trailing: const Icon(Icons.open_in_new_rounded, size: 20),
-              onTap: () => _openUrl(AppConstants.githubUrl),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.system_update_alt_rounded),
+                  title: const Text('Проверить обновления'),
+                  trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                  onTap: _checkUpdate,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.code_rounded),
+                  title: const Text('Проект на GitHub'),
+                  subtitle: Text(
+                    AppConstants.githubUrl.replaceFirst('https://', ''),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  trailing: const Icon(Icons.open_in_new_rounded, size: 20),
+                  onTap: () => _openUrl(AppConstants.githubUrl),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 24),
