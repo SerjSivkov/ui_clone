@@ -11,6 +11,7 @@ Android, APK / split / AAB и сбор артефактов в `dist/android/`.
 | `scripts/flutter_build_release.sh` | Release-сборка (`apk` / `android-split` / `appbundle` / `ios`) |
 | `bin/ci/android_collect_artifacts.sh` | Переименование APK в `dist/android/` |
 | `android/key.properties.example` | Шаблон подписи release |
+| [docs/rustore-publish.md](rustore-publish.md) | Публикация тега в RuStore (кнопка `publish:rustore`) |
 | `CHANGELOG.md` | Описание изменений релиза |
 
 Основная платформа — **Android** (MediaProjection). iOS-сборка возможна, но без

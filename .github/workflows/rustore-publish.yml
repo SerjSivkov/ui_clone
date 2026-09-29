@@ -1,0 +1,118 @@
+# RuStore publish: git tag v* → build AAB → ручное подтверждение → RuStore API
+# (черновик версии по тегу → загрузка AAB → отправка на модерацию).
+#
+# «Кнопка»: job publish-rustore привязан к environment `rustore` с Required
+# reviewers — одобрение ставится в UI: Repo → Actions → воркфлоу → Review deployments.
+# Настройка: Settings → Environments → создать `rustore`, включить Required
+# reviewers и добавить себя.
+#
+# Secrets (Settings → Secrets and variables → Actions):
+#   RUSTORE_KEY_ID, RUSTORE_KEY_BASE64   ключ API RuStore (base64) — см. docs/rustore-publish.md
+#   KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD, KEY_ALIAS  подпись release AAB
+name: RuStore publish
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  ARTIFACT_PREFIX: UIClone
+  RUSTORE_PACKAGE_NAME: com.mobileway.ui_clone
+  FLUTTER_VERSION: "3.47.4"
+
+concurrency:
+  group: rustore-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-android:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Decode release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64}" ]; then
+            echo "::error::Secret KEYSTORE_BASE64 is not set (base64 of android/app/keystore.jks)"
+            exit 1
+          fi
+          mkdir -p android/app
+          printf '%s' "${KEYSTORE_BASE64}" | tr -d '\n\r ' | base64 --decode > android/app/keystore.jks
+
+      - name: Write key.properties
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          : "${KEYSTORE_PASSWORD:?Secret KEYSTORE_PASSWORD is not set}"
+          : "${KEY_PASSWORD:?Secret KEY_PASSWORD is not set}"
+          : "${KEY_ALIAS:?Secret KEY_ALIAS is not set}"
+          {
+            echo "storePassword=${KEYSTORE_PASSWORD}"
+            echo "keyPassword=${KEY_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS}"
+            echo "storeFile=app/keystore.jks"
+          } > android/key.properties
+
+      - name: Build release AAB
+        env:
+          CI_COMMIT_TAG: ${{ github.ref_name }}
+          APP_RELEASE_LABEL: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/flutter_build_release.sh bin/ci/*.sh
+          ./scripts/flutter_build_release.sh appbundle
+          mkdir -p dist/android
+          cp build/app/outputs/bundle/release/app-release.aab \
+            "dist/android/${ARTIFACT_PREFIX}-android-${CI_COMMIT_TAG}.aab"
+          echo "Artifacts:"
+          ls -la dist/android
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-aab
+          path: dist/android/
+          retention-days: 30
+
+  publish-rustore:
+    needs: build-android
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: rustore   # ← ручное одобрение = кнопка запуска
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-aab
+          path: dist/android
+
+      - name: Publish to RuStore
+        env:
+          CI_COMMIT_TAG: ${{ github.ref_name }}
+          RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
+          RUSTORE_KEY_BASE64: ${{ secrets.RUSTORE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          chmod +x bin/ci/rustore_publish.sh
+          ./bin/ci/rustore_publish.sh
